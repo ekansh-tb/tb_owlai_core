@@ -25,12 +25,24 @@ $(document).ready(function() {
         }
     });
 
-    // 2. GLOBAL SHORTCUT (Command+Shift+L / Ctrl+Shift+L)
+    // 2. GLOBAL SHORTCUTS
+    // Command+K / Ctrl+K (Standard Spotlight)
+    frappe.ui.keys.add_shortcut({
+        shortcut: 'ctrl+k', // mac 'meta+k' is often handled by browser, but frappe maps ctrl->meta on mac often. Let's try explicit or standard.
+        action: () => window.owl_chat.toggle(),
+        description: 'Open OwlAI'
+    });
+    
+    // Ctrl+Space (Standard Spotlight)
+    frappe.ui.keys.add_shortcut({
+        shortcut: 'ctrl+space',
+        action: () => window.owl_chat.toggle(),
+        description: 'Open OwlAI'
+    });
+
+    // Keep legacy shift+ctrl+l just in case
     frappe.ui.keys.add_shortcut({
         shortcut: 'shift+ctrl+l',
-        action: () => {
-            window.owl_chat.toggle();
-        },
-        description: 'Open OwlAI Assistant'
+        action: () => window.owl_chat.toggle()
     });
 });

@@ -46,7 +46,7 @@
    "label": "Gemini API Key"
   },
   {
-   "default": "gemini-2.5-flash",
+   "default": "gemini-1.5-flash",
    "fieldname": "gemini_model",
    "fieldtype": "Data",
    "label": "Gemini Model"

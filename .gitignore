@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+venv/
+env/
+*.pyc
+
+# Distribution / binding artifacts
+bin/
+include/
+lib/
+share/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Frappe
+*.swp
+*.swo
+.DS_Store
+public/dist/
+
+# VS Code
+.vscode/
+
+# Pytest
+.pytest_cache/

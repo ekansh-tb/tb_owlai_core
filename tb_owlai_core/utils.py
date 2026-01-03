@@ -54,6 +54,6 @@ def get_active_provider_config():
 
     return {
         "provider": "gemini",
-        "model": f"gemini/{settings.gemini_model or 'gemini-1.5-flash'}",
+        "model": f"gemini/{settings.gemini_model}", # or 'gemini-1.5-flash'}",
         "api_key": api_key or frappe.conf.get("GEMINI_API_KEY")
     }

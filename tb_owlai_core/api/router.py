@@ -5,7 +5,7 @@ from litellm import completion
 from tb_owlai_core.utils import get_active_provider_config
 
 # Conversation memory settings
-CONTEXT_MESSAGE_LIMIT = 20  # Send last 20 messages to LLM
+CONTEXT_MESSAGE_LIMIT = 50  # Send last 20 messages to LLM
 
 
 def get_or_create_conversation(conversation_id=None):

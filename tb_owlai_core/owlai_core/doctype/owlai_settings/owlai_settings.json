@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-01-01 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "general_section",
+  "enabled",
+  "provider",
+  "gemini_section",
+  "gemini_api_key",
+  "gemini_model",
+  "local_llm_section",
+  "enable_local_llm",
+  "ollama_url",
+  "ollama_model"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_section",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Generative AI (Gemini)",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "AI Provider",
+   "options": "Generative AI (Gemini)\nLocal (Ollama)"
+  },
+  {
+   "fieldname": "gemini_section",
+   "fieldtype": "Section Break",
+   "label": "Gemini Settings"
+  },
+  {
+   "fieldname": "gemini_api_key",
+   "fieldtype": "Password",
+   "label": "Gemini API Key"
+  },
+  {
+   "default": "gemini-2.5-flash",
+   "fieldname": "gemini_model",
+   "fieldtype": "Data",
+   "label": "Gemini Model"
+  },
+  {
+   "fieldname": "local_llm_section",
+   "fieldtype": "Section Break",
+   "label": "Local LLM (Ollama)"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_local_llm",
+   "fieldtype": "Check",
+   "label": "Enable Local LLM Discovery"
+  },
+  {
+   "default": "http://localhost:11434",
+   "fieldname": "ollama_url",
+   "fieldtype": "Data",
+   "label": "Ollama URL"
+  },
+  {
+   "default": "llama3",
+   "fieldname": "ollama_model",
+   "fieldtype": "Data",
+   "label": "Ollama Model"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-01-01 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "owlai_core",
+ "name": "OwlAI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

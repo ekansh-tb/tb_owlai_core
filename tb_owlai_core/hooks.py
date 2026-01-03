@@ -86,7 +86,8 @@ app_include_js = [
 # ------------
 
 # before_install = "tb_owlai_core.install.before_install"
-# after_install = "tb_owlai_core.install.after_install"
+# before_install = "tb_owlai_core.install.before_install"
+after_install = "tb_owlai_core.setup.install.after_install"
 
 # Uninstallation
 # ------------

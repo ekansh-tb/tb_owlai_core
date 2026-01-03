@@ -1,1 +1,1 @@
-OwlAI Core
+owlai_core

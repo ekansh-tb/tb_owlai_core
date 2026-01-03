@@ -201,6 +201,8 @@ window.OwlChat = class OwlChat {
     }
 
     setup_voice() {
+        if (!this.$window.find('#owl-mic-btn').length) return;
+
         const $mic = this.$window.find('#owl-mic-btn');
         let mediaRecorder;
         let audioChunks = [];
@@ -208,9 +210,18 @@ window.OwlChat = class OwlChat {
         $mic.on('click', async () => {
             if ($mic.hasClass('recording')) {
                 // Stop Recording
-                mediaRecorder.stop();
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
                 $mic.removeClass('recording');
             } else {
+                // Security Check (Allow localhost)
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                if (!window.isSecureContext && !isLocal) {
+                    frappe.msgprint("🎤 Microphone requires HTTPS or localhost. Please check your browser settings or use a secure connection.");
+                    return;
+                }
+
                 // Start Recording
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -222,7 +233,8 @@ window.OwlChat = class OwlChat {
                     };
 
                     mediaRecorder.onstop = () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' }); // or audio/webm
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        console.log("OwlAI: Voice Captured", audioBlob.size, "bytes");
                         this.handle_voice_input(audioBlob);
                         stream.getTracks().forEach(track => track.stop());
                     };
@@ -230,8 +242,12 @@ window.OwlChat = class OwlChat {
                     mediaRecorder.start();
                     $mic.addClass('recording');
                 } catch (err) {
-                    console.error("Mic Access Error:", err);
-                    frappe.msgprint("Could not access microphone.");
+                    console.error("OwlAI Mic Error:", err);
+                    if (err.name === 'NotAllowedError') {
+                         frappe.msgprint("🎤 Access blocked. Please allow microphone access in your browser.");
+                    } else {
+                         frappe.msgprint("Could not access microphone: " + err.message);
+                    }
                 }
             }
         });
@@ -290,6 +306,7 @@ window.OwlChat = class OwlChat {
 
     process_request(text, imageFile, audioBlob) {
         this.add_message('Thinking...', 'assistant loading');
+        console.log("OwlAI: Sending Request...", { text, hasImage: !!imageFile, hasAudio: !!audioBlob });
         
         const formData = new FormData();
         if (text) formData.append('text', text);
@@ -321,13 +338,17 @@ window.OwlChat = class OwlChat {
         // Handle Error
         if (res.exc) {
             console.error(res.exc);
-            this.add_message("Something went wrong.", 'assistant');
+            // Try to extract a friendly message if possible, otherwise generic
+            this.add_message("⚠️ An backend error occurred. Check browser console.", 'assistant');
             return;
         }
 
         const data = res.message;
         
-        if (!data) return;
+        if (!data) {
+             this.add_message("⚠️ Received empty response.", 'assistant');
+             return;
+        }
 
         // 1. Text Response
         if (data.reply) {
@@ -342,6 +363,9 @@ window.OwlChat = class OwlChat {
                 frappe.set_route('Form', data.doctype, doc.name);
                 this.add_message(`Drafted ${data.doctype} for you!`, 'assistant');
             });
+        } else if (data.action === 'navigate') {
+            frappe.set_route(data.view || 'List', data.doctype);
+            this.add_message(`Navigating to ${data.doctype}...`, 'assistant');
         }
     }
 

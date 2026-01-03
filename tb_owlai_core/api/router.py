@@ -1,11 +1,14 @@
 import frappe
 import json
 import base64
+import time
+import traceback
 from litellm import completion
 from tb_owlai_core.utils import get_active_provider_config
+from tb_owlai_core.tool_registry import ToolRegistry
 
 # Conversation memory settings
-CONTEXT_MESSAGE_LIMIT = 50  # Send last 20 messages to LLM
+CONTEXT_MESSAGE_LIMIT = 50  # Send last 50 messages to LLM
 
 
 def get_or_create_conversation(conversation_id=None):
@@ -66,101 +69,114 @@ def save_message(conversation, role, content, message_type="text", action_data=N
     frappe.db.commit()
 
 
-# --- META TOOLS ---
-
-def get_schema_info(doctype):
-    """Meta-Tool: Get simplified schema for a DocType"""
-    if not frappe.db.exists("DocType", doctype):
-        return f"Error: DocType '{doctype}' does not exist."
+def get_doctype_from_route(route):
+    """
+    Extracts DocType from the current route.
+    Route examples:
+    - /app/todo -> Todo
+    - /app/todo/TASK-001 -> Todo
+    - /app/user-list -> User (via mapping or fuzzy match)
+    """
+    if not route: return None
     
-    meta = frappe.get_meta(doctype)
-    fields = []
-    for df in meta.fields:
-        if not df.hidden:
-            fields.append(f"{df.fieldname} ({df.fieldtype}): {df.label}")
+    parts = route.strip("/").split("/")
     
-    return f"Schema for {doctype}:\n" + "\n".join(fields[:50]) # Limit to 50 fields to save tokens
-
-
-def universal_search(doctype, query):
-    """Meta-Tool: Search for documents"""
-    try:
-        results = frappe.db.get_list(doctype, 
-            filters=None, # generic search
-            fields=["name", "title", "status", "modified"],
-            or_filters=[
-                ["name", "like", f"%{query}%"],
-                ["title", "like", f"%{query}%"]
-            ] if query else None,
-            limit=5
-        )
-        return results
-    except Exception as e:
-        return f"Error searching {doctype}: {str(e)}"
-
-
-def run_report(report_name, filters=None):
-    """Meta-Tool: Run a report and return summary"""
-    try:
-        import frappe.desk.query_report
-        result = frappe.desk.query_report.run(report_name, filters=filters or {})
-        
-        columns = result.get("columns", [])
-        data = result.get("result", [])
-        
-        if not data:
-            return "Report ran successfully but returned no data."
+    if len(parts) >= 2 and parts[0] == "app":
+        doctype_slug = parts[1]
+        if doctype_slug in ["query-report", "dashboard-view", "kanban-view"]:
+             return None # Skip special views for now
+             
+        # Try to find DocType
+        # 1. Direct Name Match
+        if frappe.db.exists("DocType", doctype_slug):
+            return doctype_slug
             
-        # Summerize if too large
-        summary = f"Report '{report_name}' Results (First 5 rows):\n"
-        # Simple CSV-like format for LLM
-        headers = [c.get("label") for c in columns][:5] # limit columns
-        summary += " | ".join(headers) + "\n"
+        # 2. Slug to Title (todo -> ToDo, system-settings -> System Settings)
+        possible_name = doctype_slug.replace("-", " ").title()
+        if frappe.db.exists("DocType", possible_name):
+             return possible_name
         
-        for row in data[:5]:
-            # row can be dict or list
-            if isinstance(row, dict):
-                vals = [str(row.get(c.get("fieldname"))) for c in columns[:5]]
-            else:
-                vals = [str(v) for v in row][:5]
-            summary += " | ".join(vals) + "\n"
-            
-        return summary
-    except Exception as e:
-        return f"Error running report: {str(e)}"
-
-
-def perform_action(action_data):
-    """Execute the decided action"""
-    action = action_data.get("action")
-    
-    if action == "count":
-        doctype = action_data.get("doctype")
-        filters = action_data.get("filters", {})
+        # 3. DB Search (case insensitive)
         try:
-            count = frappe.db.count(doctype, filters)
-            return f"Found {count} {doctype}(s)."
-        except Exception as e:
-            return f"Error counting: {str(e)}"
-
-    elif action == "get_schema":
-        return get_schema_info(action_data.get("doctype"))
-
-    elif action == "search":
-        return universal_search(action_data.get("doctype"), action_data.get("query"))
+             dt = frappe.db.get_value("DocType", {"name": ["like", doctype_slug]}, "name")
+             if dt: return dt
+        except: pass
         
-    elif action == "report":
-        return run_report(action_data.get("report_name"), action_data.get("filters"))
+    return None
 
-    return None # Client-side actions handled by frontend
+def get_schema_context(route):
+    doctype = get_doctype_from_route(route)
+    if not doctype:
+        return ""
+        
+    try:
+        meta = frappe.get_meta(doctype)
+        fields = []
+        # Basic Info
+        schema_text = f"DocType: {doctype}\n"
+        schema_text += f"Description: {meta.description or 'No description'}\n"
+        
+        # Fields
+        schema_text += "Fields:\n"
+        for df in meta.fields:
+             if df.fieldtype not in ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold"]:
+                 field_info = f"- {df.fieldname} ({df.fieldtype}): {df.label}"
+                 if df.options:
+                      field_info += f" [Options: {df.options}]"
+                 if df.reqd:
+                      field_info += " [Required]"
+                 fields.append(field_info)
+        
+        schema_text += "\n".join(fields)
+        
+        return f"""
+\n---
+CONTEXT: USER IS CURRENTLY VIEWING DOCTYPE '{doctype}'.
+SCHEMA INFORMATION:
+{schema_text}
+---
+"""
+    except Exception as e:
+        # Don't fail the whole request if schema fetch fails
+        print(f"Schema fetch error: {e}")
+        return ""
+
+def log_analytics(user, config, model, response_time, prompt_tokens, completion_tokens, total_tokens, status, tool_calls, full_prompt, full_response, error_message=None):
+    """Log execution metrics to OwlAI Analytics if enabled"""
+    try:
+        settings = frappe.get_single("OwlAI Settings")
+        if not settings.enable_analytics:
+            return
+
+        doc = frappe.get_doc({
+            "doctype": "OwlAI Analytics",
+            "user": user,
+            "timestamp": frappe.utils.now(),
+            "status": status,
+            "provider": config.get("provider"),
+            "model": model,
+            "response_time": response_time,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "tool_calls": json.dumps(tool_calls, indent=2) if tool_calls else None,
+            "full_prompt": json.dumps(full_prompt, indent=2) if full_prompt else str(full_prompt),
+            "full_response": full_response,
+            "error_message": error_message
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception as e:
+        print(f"Failed to log analytics: {e}")
+        frappe.log_error("OwlAI Analytics Log Error")
 
 
 @frappe.whitelist()
 def handle_input_v2(route=None, text=None, conversation_id=None):
     """
-    Main chat handler with conversation memory and Meta-Tools.
+    Main chat handler with conversation memory and Plugin System (ToolRegistry).
     """
-    # 1. Capture Context
+    start_time = time.time()
     user = frappe.session.user
     roles = frappe.get_roles(user)
     
@@ -173,36 +189,37 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
     conversation = get_or_create_conversation(conversation_id)
     if route:
         conversation.context_route = route
+        conversation.save(ignore_permissions=True)
     
     # 4. Handle Files
     files = frappe.request.files
     image_file = files.get('image')
     audio_file = files.get('audio')
 
-    # 5. Build System Prompt (NATIVE INTELLIGENCE)
+    # 5. Build System Prompt with Dynamic Tools & Schema Context
+    registry = ToolRegistry()
+    available_tools = registry.get_available_tools()
+    
+    schema_context = get_schema_context(route)
+    
     system_prompt = f"""
     You are OwlAI, the Native Intelligence Layer for this Frappe/ERPNext system.
-    User: {user} | Roles: {roles} | Current Screen: {route}
+    User: {user} | Roles: {roles} | Current Route: {route}
+    {schema_context}
     
-    Your Goal: Assist the user by understanding their intent and using "Meta-Tools" to interact with the system.
+    Your Goal: Assist the user by executing tools to interact with the system.
     
-    Available Actions (JSON Output):
-    1. **Search**: Find documents.
-       {{ "action": "search", "doctype": "Sales Invoice", "query": "Pending" }}
-    2. **Schema**: specific details/fields of a Doctype.
-       {{ "action": "get_schema", "doctype": "Item" }}
-    3. **Create**: open a form to create a new document.
-       {{ "action": "create_doc", "doctype": "ToDo", "data": {{ "description": "Call Mom" }} }}
-    4. **Navigate**: Go to a list or report.
-       {{ "action": "navigate", "doctype": "Leave Application", "view": "List" }}
-    5. **Count**: Count records.
-       {{ "action": "count", "doctype": "Customer", "filters": {{ "status": "Open" }} }}
+    Available Tools:
+    {json.dumps(available_tools, indent=2)}
 
     Rules:
-    - If the user asks a question that requires data, use "search" or "count".
-    - If the user wants to DO something, use "create_doc" or key actions.
-    - If just chatting, reply with plain text.
-    - Be concise and professional.
+    1. To take an action, you MUST return a strict JSON object.
+    2. Format: {{ "action": "tool_name", "args": {{ ... arguments ... }} }}
+    3. If multiple actions are needed, you can return a list of objects used strictly for reasoning, but perform one action at a time preferably or use a 'pipeline' tool if available. For now, return ONE action object.
+    4. If the user asks for a specific document or data, LOOK AT THE SCHEMA ABOVE to know field names.
+    5. If just chatting or answering a question, reply with plain text.
+    6. Do NOT wrap JSON in markdown blocks like ```json ... ``` if possible, but if you do, I will parse it.
+    7. Be concise and professional.
     """
 
     # 6. Build messages with conversation history
@@ -227,7 +244,6 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
         user_text_for_storage = f"[Image Attached] {text or 'Analyze this image'}"
 
     if audio_file:
-         # Simplified for now
          user_text_for_storage = f"[Audio Attached] {text or 'Voice command'}"
 
     if user_content:
@@ -238,6 +254,14 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
         if not audio_file:
              return {"reply": "I didn't receive any input.", "conversation_id": conversation.name}
 
+    # Analytics Vars
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_tokens = 0
+    full_response_text = ""
+    tool_calls_log = []
+    status = "Subject"
+    
     try:
         # 8. Call AI
         response = completion(
@@ -247,49 +271,115 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
             api_base=config.get("api_base")
         )
         
+        if not response or not hasattr(response, 'choices') or not response.choices:
+            raise Exception("Empty response from AI provider")
+
         reply_content = response.choices[0].message.content
+        full_response_text = reply_content
+        
+        # Extract Token Usage (if available)
+        if hasattr(response, 'usage'):
+             prompt_tokens = response.usage.prompt_tokens
+             completion_tokens = response.usage.completion_tokens
+             total_tokens = response.usage.total_tokens
         
         # 9. Parse JSON Action
         action_data = None
-        if "```json" in reply_content:
-            json_str = reply_content.split("```json")[1].split("```")[0].strip()
-            try: action_data = json.loads(json_str)
-            except: pass
-        elif reply_content.strip().startswith("{") and reply_content.strip().endswith("}"):
-            try: action_data = json.loads(reply_content)
-            except: pass
+        if reply_content:
+            # Try parsing
+            clean_content = reply_content.strip()
+            # Handle markdown code blocks
+            if "```json" in clean_content:
+                clean_content = clean_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_content:
+                clean_content = clean_content.split("```")[1].split("```")[0].strip()
+            
+            # Attempt JSON load
+            if clean_content.startswith("{") or clean_content.startswith("["):
+                try: 
+                    action_data = json.loads(clean_content)
+                    if isinstance(action_data, list) and len(action_data) > 0:
+                        action_data = action_data[0] # Take first one
+                except: 
+                    pass
+        else:
+            reply_content = ""
         
-        # 10. Execute Backend Meta-Tools
+        # 10. Execute Tools via Registry
         final_reply = reply_content
-        if action_data:
-            # Execute backend-side actions immediately for "Agentic" feel
-            result = perform_action(action_data)
-            if result:
-                # If we got a result (like count or schema), we might want to return it 
-                # OR (Better for now) return it as the reply context
-                final_reply = str(result)
-                # If it was a search, return the data to frontend to render nicely
-                if action_data.get("action") == "search":
-                     return {
-                         "reply": f"Found these results for **{action_data.get('doctype')}**:",
-                         "action": "list", # New Frontend Action
-                         "data": result,
-                         "conversation_id": conversation.name
-                     }
+        response_payload = {"reply": final_reply, "conversation_id": conversation.name}
+
+        if action_data and isinstance(action_data, dict) and "action" in action_data:
+            tool_name = action_data.get("action")
+            tool_args = action_data.get("args") or action_data.get("data") or action_data
+            
+            # Clean args
+            if "action" in tool_args: del tool_args["action"]
+            if "args" in tool_args: del tool_args["args"]
+
+            tool_calls_log.append({"name": tool_name, "args": tool_args})
+
+            # Execute Tool!
+            result = registry.execute_tool(tool_name, tool_args)
+            
+            # Handle Tool Result
+            if isinstance(result, dict):
+                if "action" in result:
+                    response_payload.update(result)
+                    if "message" in result:
+                        final_reply = result["message"]
+                        response_payload["reply"] = final_reply
+                elif "error" in result:
+                    final_reply = f"Tool Error: {result.get('error')}"
+                    response_payload["reply"] = final_reply
+                    status = "Error"
+                else:
+                    final_reply = json.dumps(result, indent=2)
+            else:
+                 final_reply = str(result)
+            
+            # Update reply if it changed
+            response_payload["reply"] = final_reply
 
         # 11. Save and Return
         save_message(conversation, "assistant", final_reply, 
                     message_type="action" if action_data else "text",
                     action_data=action_data)
         
-        if action_data and action_data.get("action") in ["create_doc", "navigate"]:
-            action_data["conversation_id"] = conversation.name
-            return action_data
-
-        return {"reply": final_reply, "conversation_id": conversation.name}
+        end_time = time.time()
+        log_analytics(
+            user=user,
+            config=config,
+            model=config.get("model"),
+            response_time=round(end_time - start_time, 2),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            status="Success" if status != "Error" else "Error",
+            tool_calls=tool_calls_log,
+            full_prompt=messages, # Log full context messages
+            full_response=full_response_text
+        )
+        
+        return response_payload
 
     except Exception as e:
+        end_time = time.time()
         frappe.log_error(f"OwlAI Error ({config.get('provider')})")
+        log_analytics(
+            user=user,
+            config=config,
+            model=config.get("model"),
+            response_time=round(end_time - start_time, 2),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            status="Error",
+            tool_calls=tool_calls_log,
+            full_prompt=messages,
+            full_response=full_response_text,
+            error_message=str(e) + "\n" + traceback.format_exc()
+        )
         return {"reply": f"Error interacting with AI: {str(e)}", "conversation_id": conversation.name}
 
 

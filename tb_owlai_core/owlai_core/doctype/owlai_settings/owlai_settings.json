@@ -7,6 +7,7 @@
  "field_order": [
   "general_section",
   "enabled",
+  "enable_analytics",
   "provider",
   "gemini_section",
   "gemini_api_key",
@@ -27,6 +28,12 @@
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_analytics",
+   "fieldtype": "Check",
+   "label": "Enable Analytics & Debugging"
   },
   {
    "default": "Generative AI (Gemini)",

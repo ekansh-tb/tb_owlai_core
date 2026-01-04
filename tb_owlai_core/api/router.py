@@ -196,6 +196,17 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
     image_file = files.get('image')
     audio_file = files.get('audio')
 
+    # Set Title if new
+    title_text = text or ""
+    if not title_text.strip():
+        if image_file: title_text = "Image Analysis"
+        elif audio_file: title_text = "Voice Command"
+    
+    if title_text and not conversation.title:
+        title = title_text[:50] + "..." if len(title_text) > 50 else title_text
+        conversation.title = title
+        conversation.save(ignore_permissions=True)
+
     # 5. Build System Prompt with Dynamic Tools & Schema Context
     registry = ToolRegistry()
     available_tools = registry.get_available_tools()
@@ -415,3 +426,24 @@ def get_conversations(limit=20):
 def new_conversation():
     conv = get_or_create_conversation()
     return {"conversation_id": conv.name}
+
+
+@frappe.whitelist()
+def get_conversation_messages(conversation_id):
+    if not conversation_id: return []
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+        if not conv.has_permission("read"): return []
+        
+        messages = []
+        for m in conv.messages:
+            messages.append({
+                "role": m.role,
+                "content": m.content,
+                "message_type": m.message_type,
+                "creation": m.creation,
+                "action_data": json.loads(m.action_data) if m.action_data else None
+            })
+        return messages
+    except:
+        return []

@@ -30,37 +30,52 @@ window.OwlChat = class OwlChat {
         this.$modal = $(`
             <div id="owl-spotlight-modal" class="owl-spotlight-overlay hidden">
                 <div class="owl-spotlight-container">
-                    <div class="owl-header">
-                        <div class="owl-header-left">
-                            <span class="owl-logo">🦉</span>
-                            <span class="owl-title">OwlAI</span>
-                            <span class="owl-session-indicator"></span>
+                    
+                    <!-- Side Drawer -->
+                    <div class="owl-sidebar" id="owl-sidebar">
+                        <div class="owl-sidebar-header">
+                            <span>History</span>
+                            <button class="owl-btn-icon owl-sidebar-close">✕</button>
                         </div>
-                        <div class="owl-header-right">
-                             <button class="owl-btn-icon owl-new-chat" title="New Chat (Cmd+Shift+K)">+</button>
-                             <button class="owl-btn-icon owl-history" title="History">🕒</button>
-                             <button class="owl-btn-icon owl-close-btn" title="Close">✕</button>
+                        <div class="owl-sidebar-content" id="owl-history-list">
+                            <!-- Items go here -->
                         </div>
                     </div>
-                    
-                    <div class="owl-messages" id="owl-messages">
-                        <div class="message system">
-                            👋 Hi! I'm OwlAI. Press <b>/</b> to see commands or just ask me anything.
-                        </div>
-                    </div>
-                    
-                    <div class="owl-input-area">
-                        <div class="owl-preview-area hidden" id="owl-preview"></div>
-                        <div class="owl-input-wrapper">
-                            <textarea id="owl-input" placeholder="Ask OwlAI..."></textarea>
-                            <div class="owl-input-actions">
-                                <button id="owl-mic-btn" class="owl-btn-icon" title="Voice Input">🎤</button>
-                                <button id="owl-send-btn" class="owl-send-btn">➤</button>
+
+                    <!-- Main Chat Area -->
+                    <div class="owl-main-area">
+                        <div class="owl-header">
+                            <div class="owl-header-left">
+                                <span class="owl-logo">🦉</span>
+                                <span class="owl-title">OwlAI</span>
+                                <span class="owl-session-indicator"></span>
+                            </div>
+                            <div class="owl-header-right">
+                                 <button class="owl-btn-icon owl-new-chat" title="New Chat (Cmd+Shift+K)">+</button>
+                                 <button class="owl-btn-icon owl-history-toggle" title="History">🕒</button>
+                                 <button class="owl-btn-icon owl-close-btn" title="Close">✕</button>
                             </div>
                         </div>
-                        <div class="owl-footer-hint">
-                            <span><b>Enter</b> to send</span>
-                            <span><b>Shift+Enter</b> for new line</span>
+                        
+                        <div class="owl-messages" id="owl-messages">
+                            <div class="message system">
+                                👋 Hi! I'm OwlAI. Press <b>/</b> to see commands or just ask me anything.
+                            </div>
+                        </div>
+                        
+                        <div class="owl-input-area">
+                            <div class="owl-preview-area hidden" id="owl-preview"></div>
+                            <div class="owl-input-wrapper">
+                                <textarea id="owl-input" placeholder="Ask OwlAI..."></textarea>
+                                <div class="owl-input-actions">
+                                    <button id="owl-mic-btn" class="owl-btn-icon" title="Voice Input">🎤</button>
+                                    <button id="owl-send-btn" class="owl-send-btn">➤</button>
+                                </div>
+                            </div>
+                            <div class="owl-footer-hint">
+                                <span><b>Enter</b> to send</span>
+                                <span><b>Shift+Enter</b> for new line</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -117,15 +132,15 @@ window.OwlChat = class OwlChat {
 
             /* Container */
             .owl-spotlight-container {
-                width: 700px;
-                max-width: 90vw;
+                width: 800px;
+                max-width: 95vw;
                 height: 600px;
-                max-height: 80vh;
+                max-height: 85vh;
                 background: var(--card-bg, #fff);
                 border-radius: 12px;
                 box-shadow: 0 20px 50px rgba(0,0,0,0.25);
                 display: flex;
-                flex-direction: column;
+                flex-direction: row; /* Horizontal Layout now */
                 overflow: hidden;
                 transform: translateY(20px);
                 transition: transform 0.2s;
@@ -135,6 +150,85 @@ window.OwlChat = class OwlChat {
             }
             .owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
                 transform: translateY(0);
+            }
+
+            /* Sidebar */
+            .owl-sidebar {
+                width: 0;
+                background: var(--control-bg, #f8fafc);
+                border-right: 1px solid var(--border-color, #eee);
+                display: flex;
+                flex-direction: column;
+                transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                overflow: hidden;
+            }
+            .owl-sidebar.expanded {
+                width: 250px;
+                border-right-width: 1px; 
+            }
+            .owl-sidebar-header {
+                padding: 12px;
+                font-weight: 600;
+                font-size: 14px;
+                border-bottom: 1px solid var(--border-color);
+                display: flex; justify-content: space-between; align-items: center;
+                white-space: nowrap;
+            }
+            .owl-sidebar-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 10px;
+                display: flex; flex-direction: column; gap: 4px;
+            }
+            
+            /* Sidebar items */
+            .owl-history-group {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin: 12px 10px 4px 10px;
+                padding-left: 2px;
+            }
+            .owl-history-item {
+                padding: 8px 12px;
+                margin: 0 6px;
+                border-radius: 8px;
+                font-size: 13.5px;
+                cursor: pointer;
+                color: var(--text-color);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                transition: all 0.2s ease;
+                border: 1px solid transparent;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .owl-history-item:hover {
+                background: var(--fg-hover-color, #f1f5f9);
+            }
+            .owl-history-item.active {
+                background: #fff;
+                color: var(--primary-color, #4338ca);
+                border-color: var(--border-color, #e2e8f0);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            }
+            .owl-history-title {
+                overflow: hidden; text-overflow: ellipsis; 
+            }
+            /* Hidden date in modern list unless needed, keeping title focus */
+            .owl-history-date { display: none; } 
+
+
+            /* Main Area */
+            .owl-main-area {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-width: 0; /* Prevent flex overflow */
             }
 
             /* Header */
@@ -148,6 +242,7 @@ window.OwlChat = class OwlChat {
             .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--text-color); }
             .owl-logo { font-size: 20px; }
             .owl-session-indicator { 
+                display: none; /* Hide for cleaner look as requested, or keep small if needed */
                 font-size: 11px; 
                 background: var(--fg-hover-color, #eef2ff); 
                 color: var(--primary-color, #4338ca); 
@@ -175,11 +270,14 @@ window.OwlChat = class OwlChat {
             }
 
             .message {
-                max-width: 85%;
-                padding: 12px 16px;
+                max-width: 80%;
+                padding: 10px 14px;
                 border-radius: 12px;
-                font-size: 15px;
-                line-height: 1.6;
+                font-size: 14.5px;
+                line-height: 1.5;
+                position: relative;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                display: flex; flex-direction: column;
             }
             .message.system { 
                 align-self: center; 
@@ -187,6 +285,8 @@ window.OwlChat = class OwlChat {
                 color: var(--text-muted, #64748b); 
                 font-size: 13px; text-align: center; 
                 border: 1px solid var(--border-color, #e2e8f0); 
+                box-shadow: none;
+                max-width: 90%;
             }
             .message.user { 
                 align-self: flex-end; 
@@ -198,9 +298,17 @@ window.OwlChat = class OwlChat {
                 align-self: flex-start; 
                 background: var(--control-bg, #f1f5f9); 
                 color: var(--text-color, #1e293b); 
-                border-bottom-left-radius: 2px; 
-                border: 1px solid var(--border-color, transparent);
+                border-bottom-left-radius: 2px;
             }
+            .message-time {
+                font-size: 10px;
+                margin-top: 4px;
+                align-self: flex-end;
+                opacity: 0.7;
+            }
+            .message.user .message-time { color: rgba(255,255,255,0.85); }
+            .message.assistant .message-time { color: var(--text-muted); }
+
             .message img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
             
             /* Input Area */
@@ -313,13 +421,28 @@ window.OwlChat = class OwlChat {
 
         // New Chat
         this.$modal.find('.owl-new-chat').on('click', () => this.start_new_conversation());
-        // History
-        this.$modal.find('.owl-history').on('click', () => this.show_conversation_history());
+        
+        // History Sidebar Toggle
+        this.$modal.find('.owl-history-toggle').on('click', () => this.toggle_sidebar());
+        this.$modal.find('.owl-sidebar-close').on('click', () => this.toggle_sidebar(false));
         
         // Voice
         this.setup_voice();
         // Paste
         this.$modal.find('#owl-input').on('paste', (e) => this.handle_paste(e));
+    }
+
+    toggle_sidebar(forceState) {
+        const $sidebar = this.$modal.find('#owl-sidebar');
+        const currentState = $sidebar.hasClass('expanded');
+        const newState = forceState !== undefined ? forceState : !currentState;
+        
+        if (newState) {
+            $sidebar.addClass('expanded');
+            this.show_conversation_history();
+        } else {
+            $sidebar.removeClass('expanded');
+        }
     }
 
     toggle() {
@@ -338,6 +461,7 @@ window.OwlChat = class OwlChat {
         this.$modal.find('#owl-messages').empty();
         this.add_message("Starting a new conversation. How can I help?", 'system');
         this.update_session_indicator();
+        this.$modal.find('.owl-history-item').removeClass('active');
     }
 
     update_session_indicator() {
@@ -365,53 +489,130 @@ window.OwlChat = class OwlChat {
     }
 
     show_conversation_history() {
+        // Show loading state if empty
+        const $list = this.$modal.find('#owl-history-list');
+        if ($list.is(':empty')) $list.html('<div class="text-muted small p-2">Loading...</div>');
+
         frappe.call({
             method: 'tb_owlai_core.api.router.get_conversations',
-            args: { limit: 10 },
+            args: { limit: 20 },
             callback: (r) => {
-                if (r.message && r.message.length > 0) {
+                if (r.message) {
                     this.render_conversation_list(r.message);
-                } else {
-                    frappe.msgprint("No history found.");
                 }
             }
         });
     }
 
     render_conversation_list(conversations) {
-        let html = '<div class="list-group">';
+        const $list = this.$modal.find('#owl-history-list');
+        $list.empty();
+        
+        if (conversations.length === 0) {
+            $list.html('<div class="text-muted small p-2">No history found.</div>');
+            return;
+        }
+
+        // Grouping Logic
+        const today = moment().format('YYYY-MM-DD');
+        const yesterday = moment().subtract(1, 'days').format('YYYY-MM-DD');
+        const last7Days = moment().subtract(7, 'days');
+
+        const groups = {
+            'Today': [],
+            'Yesterday': [],
+            'Previous 7 Days': [],
+            'Older': []
+        };
+
         conversations.forEach(conv => {
-            const date = frappe.datetime.prettyDate(conv.modified);
-            html += `
-                <a class="list-group-item conv-item" data-id="${conv.name}" style="cursor: pointer;">
-                    <div class="d-flex justify-content-between">
-                        <h6 class="mb-1">${conv.title || 'Conversation ' + conv.name.slice(-4)}</h6>
-                        <small>${date}</small>
+            const date = conv.modified.split(" ")[0]; // "2024-01-04"
+            if (date === today) groups['Today'].push(conv);
+            else if (date === yesterday) groups['Yesterday'].push(conv);
+            else if (moment(date).isAfter(last7Days)) groups['Previous 7 Days'].push(conv);
+            else groups['Older'].push(conv);
+        });
+
+        // Render Groups
+        Object.keys(groups).forEach(label => {
+            const items = groups[label];
+            if (items.length === 0) return;
+
+            $list.append(`<div class="owl-history-group">${label}</div>`);
+            
+            items.forEach(conv => {
+                const title = conv.title || 'Conversation ' + conv.name.slice(-4);
+                const activeClass = (this.conversation_id === conv.name) ? 'active' : '';
+                
+                const $item = $(`
+                    <div class="owl-history-item ${activeClass}" data-id="${conv.name}" title="${title}">
+                        <div class="owl-history-title">${title}</div>
                     </div>
-                </a>`;
+                `);
+                
+                $item.on('click', () => this.load_conversation(conv.name));
+                $list.append($item);
+            });
         });
-        html += '</div>';
+    }
+
+    load_conversation(conversation_id) {
+        if (this.conversation_id === conversation_id) return;
         
-        const dialog = new frappe.ui.Dialog({
-            title: 'Conversation History',
-            fields: [{ fieldtype: 'HTML', fieldname: 'list', options: html }]
-        });
+        this.save_conversation_id(conversation_id);
+        this.$modal.find('.owl-history-item').removeClass('active');
+        this.$modal.find(`.owl-history-item[data-id="${conversation_id}"]`).addClass('active');
+
+        // Load Messages
+        this.$modal.find('#owl-messages').html('<div class="message system">Loading conversation...</div>');
         
-        dialog.show();
-        dialog.$wrapper.find('.conv-item').on('click', (e) => {
-            const id = $(e.currentTarget).data('id');
-            this.save_conversation_id(id);
-            this.$modal.find('#owl-messages').empty();
-            this.add_message("Switched conversation.", 'system');
-            dialog.hide();
+        frappe.call({
+            method: 'tb_owlai_core.api.router.get_conversation_messages',
+            args: { conversation_id: conversation_id },
+            callback: (r) => {
+                this.$modal.find('#owl-messages').empty();
+                if (r.message && r.message.length) {
+                   // Sort by creation asc
+                   r.message.sort((a,b) => (a.creation > b.creation) ? 1 : -1);
+
+                   r.message.forEach(msg => {
+                        if (msg.role === 'user') {
+                            this.add_message(frappe.markdown(msg.content), 'user', msg.creation);
+                        } else if (msg.role === 'assistant') {
+                            if (msg.message_type === 'action') {
+                                const text = msg.content || "Executed Action";
+                                this.add_message(frappe.markdown(text), 'assistant', msg.creation);
+                            } else {
+                                this.add_message(frappe.markdown(msg.content), 'assistant', msg.creation);
+                            }
+                        }
+                   });
+                   const $msgs = this.$modal.find('#owl-messages');
+                   $msgs.scrollTop($msgs[0].scrollHeight);
+                } else {
+                    this.add_message("Conversation loaded (empty logs).", 'system');
+                }
+            }
         });
     }
 
     // === Messaging ===
     
-    add_message(html, role) {
+    add_message(html, role, timestamp=null) {
         const $msgs = this.$modal.find('#owl-messages');
-        $(`<div class="message ${role}">${html}</div>`).appendTo($msgs);
+        const timeStr = timestamp ? frappe.datetime.str_to_user(timestamp).split(" ")[1] : moment().format('HH:mm');
+        const displayTime = timeStr.slice(0, 5); // 14:30
+
+        const msgHtml = `
+            <div class="message ${role}">
+                <div class="message-content">${html}</div>
+                ${role !== 'system' ? `<span class="message-time">${displayTime}</span>` : ''}
+            </div>
+        `;
+        
+        $(msgHtml).appendTo($msgs);
+        
+        // Auto scroll if needed
         $msgs.scrollTop($msgs[0].scrollHeight);
     }
 

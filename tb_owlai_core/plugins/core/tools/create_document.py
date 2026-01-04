@@ -30,6 +30,17 @@ class CreateDocument(BaseTool):
         if not frappe.db.exists("DocType", doctype):
             return {"error": f"DocType '{doctype}' does not exist."}
 
+        # Heuristic: Map 'title' to 'description' if 'title' is not a valid field but 'description' is mandatory and missing
+        # This fixes common LLM hallucinations for simple DocTypes like ToDo
+        try:
+            meta = frappe.get_meta(doctype)
+            if "title" in data and not meta.has_field("title") and meta.has_field("description"):
+                description_field = meta.get_field("description")
+                if description_field.reqd and not data.get("description"):
+                    data["description"] = data.pop("title")
+        except Exception:
+            pass # Ignore meta errors here, will catch later
+
         # Permission Check
         if not frappe.has_permission(doctype, "create"):
              return {"error": f"You do not have permission to create '{doctype}'."}
@@ -56,7 +67,7 @@ class CreateDocument(BaseTool):
 
             doc.insert(ignore_permissions=True) # Permissions checked above
 
-            if submit and doc.docstatus == 0:
+            if submit and doc.docstatus == 0 and doc.meta.is_submittable:
                 if frappe.has_permission(doctype, "submit", doc=doc.name):
                     doc.submit()
                 else:

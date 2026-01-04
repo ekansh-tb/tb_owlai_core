@@ -26,23 +26,22 @@ window.OwlChat = class OwlChat {
         // 1. Add Icon to Navbar (Near Search/Help)
         this.mount_navbar_icon();
 
-        // 2. Spotlight Modal
+        // 2. Spotlight Modal (Default Expanded)
         this.$modal = $(`
             <div id="owl-spotlight-modal" class="owl-spotlight-overlay hidden">
-                <div class="owl-spotlight-container">
-                    
-                    <!-- Side Drawer -->
-                    <div class="owl-sidebar" id="owl-sidebar">
+                <div class="owl-spotlight-container expanded">
+                    <!-- SIDEBAR (History) -->
+                    <div class="owl-sidebar">
                         <div class="owl-sidebar-header">
-                            <span>History</span>
+                            <span class="font-bold">History</span>
                             <button class="owl-btn-icon owl-sidebar-close">✕</button>
                         </div>
-                        <div class="owl-sidebar-content" id="owl-history-list">
-                            <!-- Items go here -->
+                        <div class="owl-history-list">
+                            <div class="text-muted text-center p-3">Loading...</div>
                         </div>
                     </div>
 
-                    <!-- Main Chat Area -->
+                    <!-- MAIN CHAT AREA -->
                     <div class="owl-main-area">
                         <div class="owl-header">
                             <div class="owl-header-left">
@@ -52,30 +51,35 @@ window.OwlChat = class OwlChat {
                             </div>
                             <div class="owl-header-right">
                                  <button class="owl-btn-icon owl-new-chat" title="New Chat (Cmd+Shift+K)">+</button>
-                                 <button class="owl-btn-icon owl-history-toggle" title="History">🕒</button>
+                                 <button class="owl-btn-icon owl-history" title="History">🕒</button>
+                                 <button class="owl-btn-icon owl-expand-btn" title="Expand/Collapse" style="display:none;">⤢</button>
                                  <button class="owl-btn-icon owl-close-btn" title="Close">✕</button>
                             </div>
                         </div>
                         
                         <div class="owl-messages" id="owl-messages">
                             <div class="message system">
-                                👋 Hi! I'm OwlAI. Press <b>/</b> to see commands or just ask me anything.
+                                👋 Hi! I'm OwlAI. Ask me anything.
                             </div>
                         </div>
                         
                         <div class="owl-input-area">
                             <div class="owl-preview-area hidden" id="owl-preview"></div>
                             <div class="owl-input-wrapper">
+                                <div class="owl-search-icon">🦉</div>
                                 <textarea id="owl-input" placeholder="Ask OwlAI..."></textarea>
                                 <div class="owl-input-actions">
                                     <button id="owl-mic-btn" class="owl-btn-icon" title="Voice Input">🎤</button>
                                     <button id="owl-send-btn" class="owl-send-btn">➤</button>
                                 </div>
                             </div>
-                            <div class="owl-footer-hint">
+                            <div class="owl-footer-hint hidden">
                                 <span><b>Enter</b> to send</span>
                                 <span><b>Shift+Enter</b> for new line</span>
                             </div>
+                            
+                            <!-- Suggestions Dropdown (Inactive) -->
+                            <div class="owl-suggestions"></div>
                         </div>
                     </div>
                 </div>
@@ -235,8 +239,6 @@ window.OwlChat = class OwlChat {
             .owl-header {
                 padding: 12px 20px;
                 border-bottom: 1px solid var(--border-color, #eee);
-                display: flex;
-                justify-content: space-between;
                 background: var(--card-bg, #fcfcfc);
             }
             .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--text-color); }
@@ -412,18 +414,23 @@ window.OwlChat = class OwlChat {
 
         // Send
         this.$modal.find('#owl-send-btn').on('click', () => this.send_message());
-        this.$modal.find('#owl-input').on('keydown', (e) => {
+        const $input = this.$modal.find('#owl-input');
+        $input.on('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.send_message();
             }
         });
 
+        // Suggestions Input Listener - DISABLED
+        // $input.on('input', (e) => this.handle_input_change(e));
+        // $input.on('focus', () => { if($input.val().trim()) this.show_suggestions(); });
+        
         // New Chat
         this.$modal.find('.owl-new-chat').on('click', () => this.start_new_conversation());
         
         // History Sidebar Toggle
-        this.$modal.find('.owl-history-toggle').on('click', () => this.toggle_sidebar());
+        this.$modal.find('.owl-history').on('click', () => this.toggle_sidebar());
         this.$modal.find('.owl-sidebar-close').on('click', () => this.toggle_sidebar(false));
         
         // Voice
@@ -433,7 +440,7 @@ window.OwlChat = class OwlChat {
     }
 
     toggle_sidebar(forceState) {
-        const $sidebar = this.$modal.find('#owl-sidebar');
+        const $sidebar = this.$modal.find('.owl-sidebar');
         const currentState = $sidebar.hasClass('expanded');
         const newState = forceState !== undefined ? forceState : !currentState;
         
@@ -450,6 +457,14 @@ window.OwlChat = class OwlChat {
         if (this.is_open) {
             this.$modal.removeClass('hidden');
             setTimeout(() => this.$modal.find('#owl-input').focus(), 50);
+            
+            // Show sidebar by default on large screens
+            if (window.innerWidth > 768) {
+                this.$modal.find('.owl-sidebar').addClass('expanded'); // Ensure sidebar is expanded
+                this.show_conversation_history();
+            }
+            // Ensure expanded class is set
+            this.$modal.find('.owl-spotlight-container').removeClass('compact').addClass('expanded');
         } else {
             this.$modal.addClass('hidden');
         }
@@ -490,7 +505,7 @@ window.OwlChat = class OwlChat {
 
     show_conversation_history() {
         // Show loading state if empty
-        const $list = this.$modal.find('#owl-history-list');
+        const $list = this.$modal.find('.owl-history-list');
         if ($list.is(':empty')) $list.html('<div class="text-muted small p-2">Loading...</div>');
 
         frappe.call({
@@ -505,7 +520,7 @@ window.OwlChat = class OwlChat {
     }
 
     render_conversation_list(conversations) {
-        const $list = this.$modal.find('#owl-history-list');
+        const $list = this.$modal.find('.owl-history-list');
         $list.empty();
         
         if (conversations.length === 0) {

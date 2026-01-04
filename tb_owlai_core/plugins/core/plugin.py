@@ -44,6 +44,9 @@ class CorePlugin(BasePlugin):
             
             # Workflow
             "run_workflow",
+            
+            # Navigation
+            "navigate",
         ]
 
     def validate_environment(self):

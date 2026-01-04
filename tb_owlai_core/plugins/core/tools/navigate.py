@@ -1,3 +1,4 @@
+import frappe
 from tb_owlai_core.plugins.base import BaseTool
 
 class NavigateTool(BaseTool):
@@ -24,11 +25,20 @@ class NavigateTool(BaseTool):
         )
 
     def execute(self, **kwargs):
-        # This tool is primarily a signal for the client-side router.
-        # But if executed, we returned structured info.
+        doctype = kwargs.get('doctype')
+        view = kwargs.get('view', 'List')
+        
+        # 1. Permission Check
+        if not frappe.db.exists("DocType", doctype):
+             return {"error": f"DocType '{doctype}' not found."}
+             
+        if not frappe.has_permission(doctype, "read"):
+             return {"message": f"I cannot navigate to {doctype} because you do not have read permissions for it."}
+
+        # 2. Return Action for Client
         return {
-            "status": "navigating",
-            "message": f"Navigating to {kwargs.get('doctype')}",
-            "doctype": kwargs.get("doctype"),
-            "view": kwargs.get("view", "List")
+            "action": "navigate",  # Signals owl_chat.js to call frappe.set_route
+            "message": f"Navigating to {doctype}...",
+            "doctype": doctype,
+            "view": view
         }

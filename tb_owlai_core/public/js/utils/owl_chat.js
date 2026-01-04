@@ -130,6 +130,8 @@ window.OwlChat = class OwlChat {
                 transform: translateY(20px);
                 transition: transform 0.2s;
                 border: 1px solid var(--border-color, #e2e8f0);
+                color: var(--text-color, #1f2937);
+                font-family: var(--font-stack, sans-serif);
             }
             .owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
                 transform: translateY(0);
@@ -141,14 +143,25 @@ window.OwlChat = class OwlChat {
                 border-bottom: 1px solid var(--border-color, #eee);
                 display: flex;
                 justify-content: space-between;
-                background: var(--bg-light-gray, #fcfcfc);
+                background: var(--card-bg, #fcfcfc);
             }
-            .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+            .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--text-color); }
             .owl-logo { font-size: 20px; }
-            .owl-session-indicator { font-size: 11px; background: #eef2ff; color: #4338ca; padding: 2px 8px; border-radius: 12px; font-weight: normal; }
+            .owl-session-indicator { 
+                font-size: 11px; 
+                background: var(--fg-hover-color, #eef2ff); 
+                color: var(--primary-color, #4338ca); 
+                padding: 2px 8px; border-radius: 12px; font-weight: normal; 
+            }
             .owl-header-right { display: flex; gap: 5px; }
+            .owl-btn-icon {
+                background: transparent; border: none; cursor: pointer; padding: 4px;
+                color: var(--text-muted, #64748b); transition: all 0.2s; border-radius: 4px;
+            }
+            .owl-btn-icon:hover { background: var(--fg-hover-color, #f1f5f9); color: var(--text-color); }
+            
             .owl-close-btn { font-size: 18px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
-            .owl-close-btn:hover { background: #fee2e2; color: #dc2626; }
+            .owl-close-btn:hover { background: var(--fg-hover-color, #fee2e2); color: var(--red-500, #dc2626); }
 
             /* Messages */
             .owl-messages {
@@ -168,27 +181,44 @@ window.OwlChat = class OwlChat {
                 font-size: 15px;
                 line-height: 1.6;
             }
-            .message.system { align-self: center; background: #f8fafc; color: #64748b; font-size: 13px; text-align: center; border: 1px solid #e2e8f0; }
-            .message.user { align-self: flex-end; background: #4f46e5; color: white; border-bottom-right-radius: 2px; }
-            .message.assistant { align-self: flex-start; background: #f1f5f9; color: #1e293b; border-bottom-left-radius: 2px; }
+            .message.system { 
+                align-self: center; 
+                background: var(--fg-hover-color, #f8fafc); 
+                color: var(--text-muted, #64748b); 
+                font-size: 13px; text-align: center; 
+                border: 1px solid var(--border-color, #e2e8f0); 
+            }
+            .message.user { 
+                align-self: flex-end; 
+                background: var(--primary-color, #4f46e5); 
+                color: white; 
+                border-bottom-right-radius: 2px; 
+            }
+            .message.assistant { 
+                align-self: flex-start; 
+                background: var(--control-bg, #f1f5f9); 
+                color: var(--text-color, #1e293b); 
+                border-bottom-left-radius: 2px; 
+                border: 1px solid var(--border-color, transparent);
+            }
             .message img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
             
             /* Input Area */
             .owl-input-area {
                 padding: 16px 20px;
                 border-top: 1px solid var(--border-color, #eee);
-                background: #fcfcfc;
+                background: var(--card-bg, #fcfcfc);
             }
             .owl-input-wrapper {
-                background: white;
-                border: 1px solid #cbd5e1;
+                background: var(--control-bg, white);
+                border: 1px solid var(--border-color, #cbd5e1);
                 border-radius: 8px;
                 padding: 8px 12px;
                 display: flex;
                 align-items: flex-end;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.02);
             }
-            .owl-input-wrapper:focus-within { border-color: #6366f1; ring: 2px solid #e0e7ff; }
+            .owl-input-wrapper:focus-within { border-color: var(--primary-color, #6366f1); ring: 2px solid var(--primary-light, #e0e7ff); }
             
             #owl-input {
                 flex: 1;
@@ -200,54 +230,67 @@ window.OwlChat = class OwlChat {
                 font-family: inherit;
                 font-size: 15px;
                 padding: 4px 0;
+                background: transparent;
+                color: var(--text-color);
             }
+            #owl-input::placeholder { color: var(--text-muted); }
 
             .owl-input-actions { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
             .owl-send-btn { 
-                background: #4f46e5; color: white; 
+                background: var(--primary-color, #4f46e5); color: white; 
                 width: 32px; height: 32px; 
                 border-radius: 6px; border: none; 
                 display: flex; align-items: center; justify-content: center;
                 cursor: pointer; transition: background 0.2s;
             }
-            .owl-send-btn:hover { background: #4338ca; }
+            .owl-send-btn:hover { background: var(--primary-color-dark, #4338ca); }
             
             .owl-footer-hint {
                 display: flex; justify-content: flex-end; gap: 15px;
-                font-size: 11px; color: #94a3b8; margin-top: 8px;
+                font-size: 11px; color: var(--text-muted, #94a3b8); margin-top: 8px;
             }
 
             /* Config Form */
             .owl-config-form {
-                background: white;
+                background: var(--control-bg, white);
                 padding: 15px;
                 border-radius: 8px;
-                border: 1px solid #e2e8f0;
+                border: 1px solid var(--border-color, #e2e8f0);
                 margin-top: 10px;
                 display: flex; flex-direction: column; gap: 10px;
             }
-            .owl-config-form label { font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 4px; display: block; }
+            .owl-config-form label { font-size: 12px; font-weight: 600; color: var(--text-muted, #64748b); margin-bottom: 4px; display: block; }
             .owl-config-form select, .owl-config-form input {
-                width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;
+                width: 100%; padding: 8px; 
+                border: 1px solid var(--border-color, #cbd5e1); 
+                border-radius: 6px; font-size: 13px;
                 background: var(--control-bg, #fff); color: var(--text-color);
             }
             .owl-config-save {
-                background: #0f172a; color: white; border: none; padding: 8px; border-radius: 6px;
+                background: var(--text-color, #0f172a); color: var(--card-bg, white); border: none; padding: 8px; border-radius: 6px;
                 cursor: pointer; font-size: 13px; font-weight: 500; margin-top: 5px;
             }
-            .owl-config-save:hover { background: #1e293b; }
+            .owl-config-save:hover { opacity: 0.9; }
 
             /* Preview */
             .owl-preview-area { display: flex; gap: 8px; margin-bottom: 8px; padding-bottom: 4px; overflow-x: auto; }
-            .owl-preview-img { height: 60px; border-radius: 6px; border: 1px solid #ddd; object-fit: cover; }
+            .owl-preview-img { height: 60px; border-radius: 6px; border: 1px solid var(--border-color, #ddd); object-fit: cover; }
             
             /* List Results */
             .owl-list-results { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
             .owl-list-item { 
-                background: white; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; 
+                background: var(--control-bg, white); 
+                border: 1px solid var(--border-color, #e2e8f0); 
+                padding: 10px; border-radius: 8px; 
                 cursor: pointer; transition: all 0.2s;
+                color: var(--text-color, #1f2937);
             }
-            .owl-list-item:hover { border-color: #6366f1; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+            .owl-list-item:hover { 
+                border-color: var(--primary-color, #6366f1); 
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+                background: var(--fg-hover-color, #f9fafb);
+            }
+            .owl-list-item .text-muted { color: var(--text-muted) !important; }
         `;
         $('<style>').text(css).appendTo('head');
     }

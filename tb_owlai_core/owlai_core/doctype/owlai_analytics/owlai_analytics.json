@@ -123,7 +123,7 @@
  "links": [],
  "modified": "2024-01-01 10:00:00.000000",
  "modified_by": "Administrator",
- "module": "owlai_core",
+ "module": "OwlAI Core",
  "name": "OwlAI Analytics",
  "naming_rule": "Expression",
  "autoname": "format:OWL-ANA-{YYYY}-{MM}-{DD}-{####}",

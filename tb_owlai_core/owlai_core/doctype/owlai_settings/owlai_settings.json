@@ -15,7 +15,12 @@
   "local_llm_section",
   "enable_local_llm",
   "ollama_url",
-  "ollama_model"
+  "ollama_model",
+  "agent_section",
+  "max_agent_loops",
+  "enable_caching",
+  "cache_ttl",
+  "vision_model"
  ],
  "fields": [
   {
@@ -80,6 +85,35 @@
    "fieldname": "ollama_model",
    "fieldtype": "Data",
    "label": "Ollama Model"
+  },
+  {
+   "fieldname": "agent_section",
+   "fieldtype": "Section Break",
+   "label": "Agent Settings"
+  },
+  {
+   "default": "5",
+   "fieldname": "max_agent_loops",
+   "fieldtype": "Int",
+   "label": "Max Reasoning Loops"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_caching",
+   "fieldtype": "Check",
+   "label": "Enable Caching"
+  },
+  {
+   "default": "300",
+   "fieldname": "cache_ttl",
+   "fieldtype": "Int",
+   "label": "Cache TTL (Seconds)"
+  },
+  {
+   "default": "llama3.2-vision",
+   "fieldname": "vision_model",
+   "fieldtype": "Data",
+   "label": "Vision Model (Local)"
   }
  ],
  "issingle": 1,

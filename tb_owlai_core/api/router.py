@@ -202,7 +202,8 @@ def handle_input_v2(route=None, text=None, conversation_id=None):
         if image_file: title_text = "Image Analysis"
         elif audio_file: title_text = "Voice Command"
     
-    if title_text and not conversation.title:
+    if title_text and (not conversation.title or conversation.title.startswith("Conversation ")):
+        # Update title if it's missing OR if it looks like a default ID-based title
         title = title_text[:50] + "..." if len(title_text) > 50 else title_text
         conversation.title = title
         conversation.save(ignore_permissions=True)

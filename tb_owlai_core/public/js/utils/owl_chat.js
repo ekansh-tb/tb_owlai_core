@@ -114,6 +114,20 @@ window.OwlChat = class OwlChat {
 
     add_styles() {
         const css = `
+            :root {
+                --owl-bg: var(--card-bg, #fff);
+                --owl-sidebar-bg: var(--control-bg, #f8fafc);
+                --owl-border: var(--border-color, #e2e8f0);
+                --owl-text: var(--text-color, #1f2937);
+                --owl-text-muted: var(--text-muted, #64748b);
+                --owl-hover: var(--fg-hover-color, #f1f5f9);
+                --owl-primary: var(--primary-color, #4f46e5);
+                --owl-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+            [data-theme="dark"] {
+                --owl-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            }
+
             /* Overlay */
             .owl-spotlight-overlay {
                 position: fixed;
@@ -122,7 +136,7 @@ window.OwlChat = class OwlChat {
                 backdrop-filter: blur(2px);
                 z-index: 10001;
                 display: flex;
-                align-items: flex-start; /* Top aligned like Spotlight */
+                align-items: flex-start;
                 justify-content: center;
                 padding-top: 8vh;
                 opacity: 0;
@@ -136,20 +150,20 @@ window.OwlChat = class OwlChat {
 
             /* Container */
             .owl-spotlight-container {
-                width: 800px;
+                width: 900px;
                 max-width: 95vw;
-                height: 600px;
+                height: 700px;
                 max-height: 85vh;
-                background: var(--card-bg, #fff);
+                background: var(--owl-bg);
                 border-radius: 12px;
-                box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+                box-shadow: var(--owl-shadow);
                 display: flex;
-                flex-direction: row; /* Horizontal Layout now */
+                flex-direction: row;
                 overflow: hidden;
-                transform: translateY(20px);
+                transform: translateY(10px);
                 transition: transform 0.2s;
-                border: 1px solid var(--border-color, #e2e8f0);
-                color: var(--text-color, #1f2937);
+                border: 1px solid var(--owl-border);
+                color: var(--owl-text);
                 font-family: var(--font-stack, sans-serif);
             }
             .owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
@@ -159,106 +173,90 @@ window.OwlChat = class OwlChat {
             /* Sidebar */
             .owl-sidebar {
                 width: 0;
-                background: var(--control-bg, #f8fafc);
-                border-right: 1px solid var(--border-color, #eee);
+                background: var(--owl-sidebar-bg);
+                border-right: 1px solid var(--owl-border);
                 display: flex;
                 flex-direction: column;
-                transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transition: width 0.2s ease-in-out;
                 overflow: hidden;
             }
             .owl-sidebar.expanded {
-                width: 250px;
-                border-right-width: 1px; 
+                width: 260px;
             }
             .owl-sidebar-header {
-                padding: 12px;
+                padding: 16px;
                 font-weight: 600;
                 font-size: 14px;
-                border-bottom: 1px solid var(--border-color);
+                border-bottom: 1px solid var(--owl-border);
                 display: flex; justify-content: space-between; align-items: center;
                 white-space: nowrap;
-            }
-            .owl-sidebar-content {
-                flex: 1;
-                overflow-y: auto;
-                padding: 10px;
-                display: flex; flex-direction: column; gap: 4px;
+                color: var(--owl-text);
             }
             
-            /* Sidebar items */
+            .owl-history-list {
+                flex: 1;
+                overflow-y: auto;
+                padding: 8px;
+            }
+
             .owl-history-group {
                 font-size: 11px;
-                font-weight: 600;
-                color: var(--text-muted);
+                font-weight: 700;
+                color: var(--owl-text-muted);
                 text-transform: uppercase;
-                letter-spacing: 0.05em;
-                margin: 12px 10px 4px 10px;
-                padding-left: 2px;
+                margin: 16px 12px 6px 12px;
             }
+            
             .owl-history-item {
                 padding: 8px 12px;
-                margin: 0 6px;
-                border-radius: 8px;
-                font-size: 13.5px;
+                margin-bottom: 2px;
+                border-radius: 6px;
+                font-size: 13px;
                 cursor: pointer;
-                color: var(--text-color);
+                color: var(--owl-text);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                transition: all 0.2s ease;
+                transition: background 0.1s;
                 border: 1px solid transparent;
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
             }
             .owl-history-item:hover {
-                background: var(--fg-hover-color, #f1f5f9);
+                background: var(--owl-hover);
             }
             .owl-history-item.active {
-                background: #fff;
-                color: var(--primary-color, #4338ca);
-                border-color: var(--border-color, #e2e8f0);
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                background: var(--fg-color, #fff);
+                border-color: var(--owl-border);
+                font-weight: 500;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
-            .owl-history-title {
-                overflow: hidden; text-overflow: ellipsis; 
+            [data-theme="dark"] .owl-history-item.active {
+                background: var(--card-bg);
             }
-            /* Hidden date in modern list unless needed, keeping title focus */
-            .owl-history-date { display: none; } 
-
 
             /* Main Area */
             .owl-main-area {
                 flex: 1;
                 display: flex;
                 flex-direction: column;
-                min-width: 0; /* Prevent flex overflow */
+                min-width: 0;
             }
 
             /* Header */
             .owl-header {
                 padding: 12px 20px;
-                border-bottom: 1px solid var(--border-color, #eee);
-                background: var(--card-bg, #fcfcfc);
+                border-bottom: 1px solid var(--owl-border);
+                display: flex; justify-content: space-between; align-items: center;
+                background: var(--owl-bg);
             }
-            .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--text-color); }
+            .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--owl-text); }
             .owl-logo { font-size: 20px; }
-            .owl-session-indicator { 
-                display: none; /* Hide for cleaner look as requested, or keep small if needed */
-                font-size: 11px; 
-                background: var(--fg-hover-color, #eef2ff); 
-                color: var(--primary-color, #4338ca); 
-                padding: 2px 8px; border-radius: 12px; font-weight: normal; 
-            }
-            .owl-header-right { display: flex; gap: 5px; }
-            .owl-btn-icon {
-                background: transparent; border: none; cursor: pointer; padding: 4px;
-                color: var(--text-muted, #64748b); transition: all 0.2s; border-radius: 4px;
-            }
-            .owl-btn-icon:hover { background: var(--fg-hover-color, #f1f5f9); color: var(--text-color); }
             
-            .owl-close-btn { font-size: 18px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
-            .owl-close-btn:hover { background: var(--fg-hover-color, #fee2e2); color: var(--red-500, #dc2626); }
+            .owl-btn-icon {
+                background: transparent; border: none; cursor: pointer; padding: 6px;
+                color: var(--owl-text-muted); transition: all 0.2s; border-radius: 6px;
+                display: inline-flex; align-items: center; justify-content: center;
+            }
+            .owl-btn-icon:hover { background: var(--owl-hover); color: var(--owl-text); }
 
             /* Messages */
             .owl-messages {
@@ -268,96 +266,98 @@ window.OwlChat = class OwlChat {
                 display: flex;
                 flex-direction: column;
                 gap: 16px;
-                background: var(--card-bg, #fff);
+                background: var(--owl-bg);
             }
 
             .message {
-                max-width: 80%;
-                padding: 10px 14px;
+                max-width: 85%;
+                padding: 10px 16px;
                 border-radius: 12px;
-                font-size: 14.5px;
-                line-height: 1.5;
+                font-size: 14px;
+                line-height: 1.6;
                 position: relative;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                display: flex; flex-direction: column;
+                word-wrap: break-word;
             }
             .message.system { 
                 align-self: center; 
-                background: var(--fg-hover-color, #f8fafc); 
-                color: var(--text-muted, #64748b); 
-                font-size: 13px; text-align: center; 
-                border: 1px solid var(--border-color, #e2e8f0); 
-                box-shadow: none;
-                max-width: 90%;
+                background: var(--owl-sidebar-bg); 
+                color: var(--owl-text-muted); 
+                font-size: 12px; 
+                padding: 6px 12px;
+                border: 1px solid var(--owl-border);
+                border-radius: 20px;
             }
             .message.user { 
                 align-self: flex-end; 
-                background: var(--primary-color, #4f46e5); 
-                color: white; 
+                background: var(--owl-primary); 
+                color: #fff; 
                 border-bottom-right-radius: 2px; 
             }
             .message.assistant { 
                 align-self: flex-start; 
-                background: var(--control-bg, #f1f5f9); 
-                color: var(--text-color, #1e293b); 
+                background: var(--owl-sidebar-bg); 
+                color: var(--owl-text); 
                 border-bottom-left-radius: 2px;
+                border: 1px solid var(--owl-border);
             }
+            
             .message-time {
                 font-size: 10px;
                 margin-top: 4px;
-                align-self: flex-end;
+                text-align: right;
                 opacity: 0.7;
+                display: block;
             }
-            .message.user .message-time { color: rgba(255,255,255,0.85); }
-            .message.assistant .message-time { color: var(--text-muted); }
-
-            .message img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
             
             /* Input Area */
             .owl-input-area {
                 padding: 16px 20px;
-                border-top: 1px solid var(--border-color, #eee);
-                background: var(--card-bg, #fcfcfc);
+                border-top: 1px solid var(--owl-border);
+                background: var(--owl-bg);
             }
             .owl-input-wrapper {
-                background: var(--control-bg, white);
-                border: 1px solid var(--border-color, #cbd5e1);
-                border-radius: 8px;
+                background: var(--control-bg);
+                border: 1px solid var(--owl-border);
+                border-radius: 10px;
                 padding: 8px 12px;
                 display: flex;
                 align-items: flex-end;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                transition: border-color 0.2s, box-shadow 0.2s;
             }
-            .owl-input-wrapper:focus-within { border-color: var(--primary-color, #6366f1); ring: 2px solid var(--primary-light, #e0e7ff); }
+            .owl-input-wrapper:focus-within { 
+                border-color: var(--owl-primary); 
+                box-shadow: 0 0 0 2px var(--primary-light, rgba(79, 70, 229, 0.1)); 
+            }
             
             #owl-input {
                 flex: 1;
                 border: none;
                 outline: none;
                 resize: none;
-                max-height: 120px;
+                max-height: 150px;
                 min-height: 24px;
                 font-family: inherit;
-                font-size: 15px;
+                font-size: 14px;
                 padding: 4px 0;
                 background: transparent;
-                color: var(--text-color);
+                color: var(--owl-text);
+                line-height: 1.5;
             }
-            #owl-input::placeholder { color: var(--text-muted); }
+            #owl-input::placeholder { color: var(--owl-text-muted); }
 
-            .owl-input-actions { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+            .owl-input-actions { display: flex; align-items: center; gap: 6px; margin-left: 8px; padding-bottom: 2px; }
             .owl-send-btn { 
-                background: var(--primary-color, #4f46e5); color: white; 
-                width: 32px; height: 32px; 
+                background: var(--owl-primary); color: white; 
+                width: 30px; height: 30px; 
                 border-radius: 6px; border: none; 
                 display: flex; align-items: center; justify-content: center;
-                cursor: pointer; transition: background 0.2s;
+                cursor: pointer; transition: opacity 0.2s;
             }
-            .owl-send-btn:hover { background: var(--primary-color-dark, #4338ca); }
+            .owl-send-btn:hover { opacity: 0.9; }
             
             .owl-footer-hint {
                 display: flex; justify-content: flex-end; gap: 15px;
-                font-size: 11px; color: var(--text-muted, #94a3b8); margin-top: 8px;
+                font-size: 11px; color: var(--owl-text-muted); margin-top: 8px;
             }
 
             /* Config Form */
@@ -556,7 +556,12 @@ window.OwlChat = class OwlChat {
             $list.append(`<div class="owl-history-group">${label}</div>`);
             
             items.forEach(conv => {
-                const title = conv.title || 'Conversation ' + conv.name.slice(-4);
+                // Determine Title: Use conv.title, or if missing/empty, use a friendly "New Chat" with small ID
+                let title = conv.title;
+                if (!title || title.trim() === '') {
+                    title = "Conversation " + conv.name.slice(-4);
+                }
+                
                 const activeClass = (this.conversation_id === conv.name) ? 'active' : '';
                 
                 const $item = $(`

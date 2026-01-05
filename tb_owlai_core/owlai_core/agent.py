@@ -26,22 +26,30 @@ class OwlAgent:
         }
         
         if not self.conversation and conversation_name:
-            self.conversation = frappe.get_doc("OwlAI Conversation", conversation_name)
+            if frappe.db.exists("OwlAI Conversation", conversation_name):
+                self.conversation = frappe.get_doc("OwlAI Conversation", conversation_name)
         
         if self.conversation:
             self._load_history()
 
     def _load_history(self):
-        """Loads conversation history into LLM format, skipping system/tool logs for the prompt."""
+        """Loads conversation history into LLM format."""
         if not self.conversation or not self.conversation.messages:
             return
             
-        # Limit to last 20 messages to keep context window clean
-        msgs = self.conversation.messages[-5:]
+        # Limit to last 10 messages to keep context window clean but provide sufficient history
+        msgs = self.conversation.messages[-10:]
         for m in msgs:
-            if m.role in ["user", "assistant"]:
+            # Map 'system' role from DB (observations) to 'user' for LLM context, 
+            # or keep valid roles.
+            role = m.role
+            if role == "system":
+                 # Observations are saved as 'system' but fed as 'user' in the loop
+                role = "user" 
+            
+            if role in ["user", "assistant", "system"]:
                 self.history.append({
-                    "role": m.role,
+                    "role": role,
                     "content": m.content
                 })
 
@@ -91,7 +99,7 @@ class OwlAgent:
                 data = json.loads(block)
                 if "action" in data:
                     return {"type": "tool_call", "tool": data["action"], "args": data.get("args", {})}
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, IndexError):
                 pass
 
         # 2. Try finding raw JSON object (brackets)
@@ -133,7 +141,12 @@ class OwlAgent:
         else:
             self.save_message("user", user_message)
 
-        messages.append({"role": "user", "content": user_content if image_file else user_message})
+        # If user_content has only text, simplify to string for broader compatibility
+        final_user_content = user_content
+        if len(user_content) == 1 and user_content[0]["type"] == "text":
+            final_user_content = user_message
+        
+        messages.append({"role": "user", "content": final_user_content})
 
         client_action = {}
         current_step = 0
@@ -160,7 +173,7 @@ class OwlAgent:
             except Exception as e:
                 return {"reply": f"LLM Connection Error: {str(e)}", "close_chat": False}
 
-            raw_content = response.choices[0].message.content
+            raw_content = response.choices[0].message.content or ""
             parsed = self._parse_llm_response(raw_content)
 
             if parsed["type"] == "tool_call":
@@ -171,6 +184,13 @@ class OwlAgent:
                 try:
                     self.save_message("assistant", f"Calling {tool_name}...", message_type="action", action_data=parsed)
                     
+                    # Notify frontend via Realtime API for Toast
+                    frappe.publish_realtime("msgprint", {
+                        "message": f"OwlAI is executing {tool_name}...",
+                        "alert": True,
+                        "indicator": "blue"
+                    }, user=self.user)
+
                     # Execute
                     tool_start = time.time()
                     result = self.registry.execute(tool_name, tool_args)
@@ -194,12 +214,16 @@ class OwlAgent:
                     # Feed observation back
                     observation = f"Observation from {tool_name}: {json.dumps(result, default=str)}"
                     messages.append({"role": "assistant", "content": raw_content})
-                    messages.append({"role": "user", "content": observation})
+                    
+                    # Ensure observation is valid string
+                    messages.append({"role": "user", "content": str(observation)})
                     self.save_message("system", observation)
 
                 except Exception as e:
                     error_obs = f"System Error: {str(e)}"
+                    messages.append({"role": "assistant", "content": raw_content})
                     messages.append({"role": "user", "content": error_obs})
+                    self.save_message("system", error_obs)
             else:
                 final_text = parsed["content"]
                 self.save_message("assistant", final_text)
@@ -217,5 +241,3 @@ class OwlAgent:
             response_data.update(client_action)
             
         return response_data
-
-

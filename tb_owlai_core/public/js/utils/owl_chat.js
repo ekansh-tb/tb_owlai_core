@@ -89,18 +89,41 @@ window.OwlChat = class OwlChat {
     }
 
     mount_navbar_icon() {
-        // Find the navbar actions area
+        // Prevent Duplicate
+        if ($('.owl-navbar-icon-li').length) return;
+
+        // Find the navbar actions list.
+        // We target the UL inside navbar-right to ensure valid HTML (li inside ul)
         const $navbar_right = $('.navbar .navbar-right .nav.navbar-nav');
 
-        // Insert before Help or User menu
+        // Icon URL
+        const icon_url = "/assets/tb_owlai_core/frontend/favicon.png";
+
+        // Create LI element
         const $li = $(`
-            <li class="dropdown">
-                <a class="nav-link text-muted owl-navbar-icon" href="#" onclick="return false;" title="OwlAI Assistant (Shift+Ctrl+L)">
-                    <span>🦉</span>
+            <li class="nav-item owl-navbar-icon-li" title="Ask OwlAI (Ctrl+K)">
+                <a class="nav-link" href="#" onclick="return false;">
+                    <img src="${icon_url}" class="owl-nav-icon-img" alt="OwlAI">
                 </a>
             </li>
         `);
 
+        // Style the image inline for safety
+        $li.find('img').css({
+            'height': '18px',
+            'width': 'auto',
+            'vertical-align': 'text-top',
+            'object-fit': 'contain',
+            'filter': 'grayscale(100%) opacity(0.7)'
+        });
+
+        // Hover effect
+        $li.hover(
+            function () { $(this).find('img').css('filter', 'none'); },
+            function () { $(this).find('img').css('filter', 'grayscale(100%) opacity(0.7)'); }
+        );
+
+        // Prepend to the list (placing it first, near the search bar)
         $navbar_right.prepend($li);
 
         $li.on('click', (e) => {

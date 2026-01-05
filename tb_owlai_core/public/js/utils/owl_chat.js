@@ -269,6 +269,7 @@ window.OwlChat = class OwlChat {
                 background: var(--owl-bg);
             }
             .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--owl-text); }
+            .owl-header-right { display: flex; align-items: center; gap: 8px; }
             .owl-logo { font-size: 20px; }
             
             .owl-btn-icon {
@@ -718,7 +719,11 @@ window.OwlChat = class OwlChat {
         const data = res.message;
         if (!data) return;
 
-        if (data.conversation_id) this.save_conversation_id(data.conversation_id);
+        if (data.conversation_id) {
+            const is_new = this.conversation_id !== data.conversation_id;
+            this.save_conversation_id(data.conversation_id);
+            if (is_new) this.show_conversation_history();
+        }
 
         // CONFIG NEEDED?
         if (data.config_needed) {

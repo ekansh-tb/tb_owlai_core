@@ -656,11 +656,25 @@ window.OwlChat = class OwlChat {
     process_request(text, imageFile, audioBlob) {
         this.add_message('Thinking...', 'assistant loading');
         
+        // Context Gathering
+        let context = {};
+        try {
+            context = {
+                route: frappe.get_route_str(),
+                form_data: (window.cur_frm && window.cur_frm.doc) ? window.cur_frm.doc : {},
+                selected_items: (window.cur_list && window.cur_list.get_checked_items) ? window.cur_list.get_checked_items(true) : []
+            };
+        } catch (e) {
+            console.warn("OwlAI: Failed to gather context", e);
+        }
+
         const formData = new FormData();
         if(text) formData.append('text', text);
         if(imageFile) formData.append('image', imageFile);
         if(audioBlob) formData.append('audio', audioBlob, 'voice.wav');
         formData.append('route', frappe.get_route_str());
+        formData.append('context', JSON.stringify(context));
+        
         if(this.conversation_id) formData.append('conversation_id', this.conversation_id);
 
         fetch('/api/method/tb_owlai_core.api.router.handle_input_v2', {

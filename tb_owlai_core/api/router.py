@@ -6,6 +6,8 @@ import traceback
 from litellm import completion
 from tb_owlai_core.utils import get_active_provider_config
 from tb_owlai_core.tool_registry import ToolRegistry
+from tb_owlai_core.owlai_core.agent import OwlAgent
+from tb_owlai_core.utils.context import OwlContext
 
 # Conversation memory settings
 CONTEXT_MESSAGE_LIMIT = 50  # Send last 50 messages to LLM
@@ -172,227 +174,73 @@ def log_analytics(user, config, model, response_time, prompt_tokens, completion_
 
 
 @frappe.whitelist()
-def handle_input_v2(route=None, text=None, conversation_id=None):
+def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
     """
-    Main chat handler with conversation memory and Plugin System (ToolRegistry).
+    Main chat handler using the new Agent Architecture.
+    Accepts:
+    - route: Current route string (legacy, also in context)
+    - text: User query
+    - conversation_id: ID to continue
+    - context: JSON string containing frontend context (form_data, selection, etc.)
     """
-    start_time = time.time()
     user = frappe.session.user
-    roles = frappe.get_roles(user)
     
-    # 2. Get AI Provider Config
+    # 1. Get AI Provider Config
     config = get_active_provider_config()
     if not config:
         return {"reply": "⚠️ AI Assistant is disabled or not configured. Please check 'OwlAI Settings'."}
     
-    # 3. Get or create conversation
+    # 2. Get or create conversation
     conversation = get_or_create_conversation(conversation_id)
-    if route:
+    if route and not conversation.context_route:
         conversation.context_route = route
         conversation.save(ignore_permissions=True)
     
-    # 4. Handle Files
+    # 3. Handle Files
     files = frappe.request.files
     image_file = files.get('image')
     audio_file = files.get('audio')
+    
+    # Update Title if needed
+    _update_conversation_title(conversation, text, image_file, audio_file)
 
-    # Set Title if new
+    # 4. Prepare Context
+    context_data = {}
+    if context:
+        try:
+             context_data = json.loads(context)
+        except: pass
+    
+    # If route is passed separately, prefer it or fallback to context
+    current_route = route or context_data.get('route')
+    
+    agent_context = OwlContext(
+        route=current_route,
+        form_data=context_data.get('form_data'),
+        selected_items=context_data.get('selected_items')
+    )
+    
+    # 5. Instantiate and Run Agent
+    agent = OwlAgent(user=user, context=agent_context, conversation=conversation)
+    result = agent.run(text, image_file, audio_file)
+    
+    # result contains {"reply": "..."} coming from agent.run()
+    # Add conversation_id for frontend tracking
+    result["conversation_id"] = conversation.name
+    
+    return result
+
+def _update_conversation_title(conversation, text, image_file, audio_file):
+    """Helper to name the conversation"""
     title_text = text or ""
     if not title_text.strip():
         if image_file: title_text = "Image Analysis"
         elif audio_file: title_text = "Voice Command"
     
     if title_text and (not conversation.title or conversation.title.startswith("Conversation ")):
-        # Update title if it's missing OR if it looks like a default ID-based title
         title = title_text[:50] + "..." if len(title_text) > 50 else title_text
         conversation.title = title
         conversation.save(ignore_permissions=True)
-
-    # 5. Build System Prompt with Dynamic Tools & Schema Context
-    registry = ToolRegistry()
-    available_tools = registry.get_available_tools()
-    
-    schema_context = get_schema_context(route)
-    
-    system_prompt = f"""
-    You are OwlAI, the Native Intelligence Layer for this Frappe/ERPNext system.
-    User: {user} | Roles: {roles} | Current Route: {route}
-    {schema_context}
-    
-    Your Goal: Assist the user by executing tools to interact with the system.
-    
-    Available Tools:
-    {json.dumps(available_tools, indent=2)}
-
-    Rules:
-    1. To take an action, you MUST return a strict JSON object.
-    2. Format: {{ "action": "tool_name", "args": {{ ... arguments ... }} }}
-    3. If multiple actions are needed, you can return a list of objects used strictly for reasoning, but perform one action at a time preferably or use a 'pipeline' tool if available. For now, return ONE action object.
-    4. If the user asks for a specific document or data, LOOK AT THE SCHEMA ABOVE to know field names.
-    5. If just chatting or answering a question, reply with plain text.
-    6. Do NOT wrap JSON in markdown blocks like ```json ... ``` if possible, but if you do, I will parse it.
-    7. Be concise and professional.
-    """
-
-    # 6. Build messages with conversation history
-    messages = [{"role": "system", "content": system_prompt}]
-    history = get_conversation_history(conversation)
-    messages.extend(history)
-    
-    # 7. Build current user message
-    user_content = []
-    user_text_for_storage = text or ""
-    
-    if text:
-        user_content.append({"type": "text", "text": text})
-
-    if image_file:
-        image_bytes = image_file.read()
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        user_content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
-        })
-        user_text_for_storage = f"[Image Attached] {text or 'Analyze this image'}"
-
-    if audio_file:
-         user_text_for_storage = f"[Audio Attached] {text or 'Voice command'}"
-
-    if user_content:
-        messages.append({"role": "user", "content": user_content})
-        save_message(conversation, "user", user_text_for_storage, 
-                    message_type="image" if image_file else "text")
-    else:
-        if not audio_file:
-             return {"reply": "I didn't receive any input.", "conversation_id": conversation.name}
-
-    # Analytics Vars
-    prompt_tokens = 0
-    completion_tokens = 0
-    total_tokens = 0
-    full_response_text = ""
-    tool_calls_log = []
-    status = "Subject"
-    
-    try:
-        # 8. Call AI
-        response = completion(
-            model=config.get("model"),
-            messages=messages,
-            api_key=config.get("api_key"),
-            api_base=config.get("api_base")
-        )
-        
-        if not response or not hasattr(response, 'choices') or not response.choices:
-            raise Exception("Empty response from AI provider")
-
-        reply_content = response.choices[0].message.content
-        full_response_text = reply_content
-        
-        # Extract Token Usage (if available)
-        if hasattr(response, 'usage'):
-             prompt_tokens = response.usage.prompt_tokens
-             completion_tokens = response.usage.completion_tokens
-             total_tokens = response.usage.total_tokens
-        
-        # 9. Parse JSON Action
-        action_data = None
-        if reply_content:
-            # Try parsing
-            clean_content = reply_content.strip()
-            # Handle markdown code blocks
-            if "```json" in clean_content:
-                clean_content = clean_content.split("```json")[1].split("```")[0].strip()
-            elif "```" in clean_content:
-                clean_content = clean_content.split("```")[1].split("```")[0].strip()
-            
-            # Attempt JSON load
-            if clean_content.startswith("{") or clean_content.startswith("["):
-                try: 
-                    action_data = json.loads(clean_content)
-                    if isinstance(action_data, list) and len(action_data) > 0:
-                        action_data = action_data[0] # Take first one
-                except: 
-                    pass
-        else:
-            reply_content = ""
-        
-        # 10. Execute Tools via Registry
-        final_reply = reply_content
-        response_payload = {"reply": final_reply, "conversation_id": conversation.name}
-
-        if action_data and isinstance(action_data, dict) and "action" in action_data:
-            tool_name = action_data.get("action")
-            tool_args = action_data.get("args") or action_data.get("data") or action_data
-            
-            # Clean args
-            if "action" in tool_args: del tool_args["action"]
-            if "args" in tool_args: del tool_args["args"]
-
-            tool_calls_log.append({"name": tool_name, "args": tool_args})
-
-            # Execute Tool!
-            result = registry.execute_tool(tool_name, tool_args)
-            
-            # Handle Tool Result
-            if isinstance(result, dict):
-                if "action" in result:
-                    response_payload.update(result)
-                    if "message" in result:
-                        final_reply = result["message"]
-                        response_payload["reply"] = final_reply
-                elif "error" in result:
-                    final_reply = f"Tool Error: {result.get('error')}"
-                    response_payload["reply"] = final_reply
-                    status = "Error"
-                else:
-                    final_reply = json.dumps(result, indent=2)
-            else:
-                 final_reply = str(result)
-            
-            # Update reply if it changed
-            response_payload["reply"] = final_reply
-
-        # 11. Save and Return
-        save_message(conversation, "assistant", final_reply, 
-                    message_type="action" if action_data else "text",
-                    action_data=action_data)
-        
-        end_time = time.time()
-        log_analytics(
-            user=user,
-            config=config,
-            model=config.get("model"),
-            response_time=round(end_time - start_time, 2),
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            status="Success" if status != "Error" else "Error",
-            tool_calls=tool_calls_log,
-            full_prompt=messages, # Log full context messages
-            full_response=full_response_text
-        )
-        
-        return response_payload
-
-    except Exception as e:
-        end_time = time.time()
-        frappe.log_error(f"OwlAI Error ({config.get('provider')})")
-        log_analytics(
-            user=user,
-            config=config,
-            model=config.get("model"),
-            response_time=round(end_time - start_time, 2),
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            status="Error",
-            tool_calls=tool_calls_log,
-            full_prompt=messages,
-            full_response=full_response_text,
-            error_message=str(e) + "\n" + traceback.format_exc()
-        )
-        return {"reply": f"Error interacting with AI: {str(e)}", "conversation_id": conversation.name}
 
 
 @frappe.whitelist()
@@ -438,12 +286,17 @@ def get_conversation_messages(conversation_id):
         
         messages = []
         for m in conv.messages:
+            try:
+                action_data = json.loads(m.action_data) if m.action_data else None
+            except:
+                action_data = None
+
             messages.append({
                 "role": m.role,
                 "content": m.content,
                 "message_type": m.message_type,
                 "creation": m.creation,
-                "action_data": json.loads(m.action_data) if m.action_data else None
+                "action_data": action_data
             })
         return messages
     except:

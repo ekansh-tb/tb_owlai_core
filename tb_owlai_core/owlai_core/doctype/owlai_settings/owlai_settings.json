@@ -1,140 +1,217 @@
 {
- "actions": [],
- "allow_rename": 1,
- "creation": "2024-01-01 10:00:00.000000",
- "doctype": "DocType",
- "engine": "InnoDB",
- "field_order": [
-  "general_section",
-  "enabled",
-  "enable_analytics",
-  "provider",
-  "gemini_section",
-  "gemini_api_key",
-  "gemini_model",
-  "local_llm_section",
-  "enable_local_llm",
-  "ollama_url",
-  "ollama_model",
-  "agent_section",
-  "max_agent_loops",
-  "enable_caching",
-  "cache_ttl",
-  "vision_model"
- ],
- "fields": [
-  {
-   "fieldname": "general_section",
-   "fieldtype": "Section Break",
-   "label": "General"
-  },
-  {
-   "default": "1",
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "label": "Enabled"
-  },
-  {
-   "default": "0",
-   "fieldname": "enable_analytics",
-   "fieldtype": "Check",
-   "label": "Enable Analytics & Debugging"
-  },
-  {
-   "default": "Generative AI (Gemini)",
-   "fieldname": "provider",
-   "fieldtype": "Select",
-   "label": "AI Provider",
-   "options": "Generative AI (Gemini)\nLocal (Ollama)"
-  },
-  {
-   "fieldname": "gemini_section",
-   "fieldtype": "Section Break",
-   "label": "Gemini Settings"
-  },
-  {
-   "fieldname": "gemini_api_key",
-   "fieldtype": "Password",
-   "label": "Gemini API Key"
-  },
-  {
-   "default": "gemini-1.5-flash",
-   "fieldname": "gemini_model",
-   "fieldtype": "Data",
-   "label": "Gemini Model"
-  },
-  {
-   "fieldname": "local_llm_section",
-   "fieldtype": "Section Break",
-   "label": "Local LLM (Ollama)"
-  },
-  {
-   "default": "0",
-   "fieldname": "enable_local_llm",
-   "fieldtype": "Check",
-   "label": "Enable Local LLM Discovery"
-  },
-  {
-   "default": "http://localhost:11434",
-   "fieldname": "ollama_url",
-   "fieldtype": "Data",
-   "label": "Ollama URL"
-  },
-  {
-   "default": "llama3",
-   "fieldname": "ollama_model",
-   "fieldtype": "Data",
-   "label": "Ollama Model"
-  },
-  {
-   "fieldname": "agent_section",
-   "fieldtype": "Section Break",
-   "label": "Agent Settings"
-  },
-  {
-   "default": "5",
-   "fieldname": "max_agent_loops",
-   "fieldtype": "Int",
-   "label": "Max Reasoning Loops"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_caching",
-   "fieldtype": "Check",
-   "label": "Enable Caching"
-  },
-  {
-   "default": "300",
-   "fieldname": "cache_ttl",
-   "fieldtype": "Int",
-   "label": "Cache TTL (Seconds)"
-  },
-  {
-   "default": "llama3.2-vision",
-   "fieldname": "vision_model",
-   "fieldtype": "Data",
-   "label": "Vision Model (Local)"
-  }
- ],
- "issingle": 1,
- "links": [],
- "modified": "2024-01-01 10:00:00.000000",
- "modified_by": "Administrator",
- "module": "OwlAI Core",
- "name": "OwlAI Settings",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "email": 1,
-   "print": 1,
-   "read": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2024-01-01 10:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "configuration_tab",
+        "general_section",
+        "enabled",
+        "provider",
+        "cb_general",
+        "enable_analytics",
+        "gemini_section",
+        "gemini_api_key",
+        "cb_gemini",
+        "gemini_model",
+        "local_llm_section",
+        "enable_local_llm",
+        "ollama_url",
+        "cb_local",
+        "ollama_model",
+        "vision_model",
+        "agent_tab",
+        "agent_section",
+        "max_agent_loops",
+        "response_temperature",
+        "cb_agent",
+        "context_message_limit",
+        "caching_section",
+        "enable_caching",
+        "cb_cache",
+        "cache_ttl",
+        "advanced_tab",
+        "system_section",
+        "system_prompt_additions"
+    ],
+    "fields": [
+        {
+            "fieldname": "configuration_tab",
+            "fieldtype": "Tab Break",
+            "label": "Configuration"
+        },
+        {
+            "fieldname": "general_section",
+            "fieldtype": "Section Break",
+            "label": "General"
+        },
+        {
+            "default": "1",
+            "fieldname": "enabled",
+            "fieldtype": "Check",
+            "label": "Enabled"
+        },
+        {
+            "default": "Generative AI (Gemini)",
+            "fieldname": "provider",
+            "fieldtype": "Select",
+            "label": "AI Provider",
+            "options": "Generative AI (Gemini)\nLocal (Ollama)"
+        },
+        {
+            "fieldname": "cb_general",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "0",
+            "fieldname": "enable_analytics",
+            "fieldtype": "Check",
+            "label": "Enable Analytics & Debugging"
+        },
+        {
+            "collapsible": 1,
+            "fieldname": "gemini_section",
+            "fieldtype": "Section Break",
+            "label": "Gemini Settings"
+        },
+        {
+            "fieldname": "gemini_api_key",
+            "fieldtype": "Password",
+            "label": "Gemini API Key"
+        },
+        {
+            "fieldname": "cb_gemini",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "gemini-1.5-flash",
+            "fieldname": "gemini_model",
+            "fieldtype": "Data",
+            "label": "Gemini Model"
+        },
+        {
+            "collapsible": 1,
+            "fieldname": "local_llm_section",
+            "fieldtype": "Section Break",
+            "label": "Local LLM (Ollama)"
+        },
+        {
+            "default": "0",
+            "fieldname": "enable_local_llm",
+            "fieldtype": "Check",
+            "label": "Enable Local LLM Discovery"
+        },
+        {
+            "default": "http://localhost:11434",
+            "fieldname": "ollama_url",
+            "fieldtype": "Data",
+            "label": "Ollama URL"
+        },
+        {
+            "fieldname": "cb_local",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "llama3",
+            "fieldname": "ollama_model",
+            "fieldtype": "Data",
+            "label": "Ollama Model"
+        },
+        {
+            "default": "llama3.2-vision",
+            "fieldname": "vision_model",
+            "fieldtype": "Data",
+            "label": "Vision Model (Local)"
+        },
+        {
+            "fieldname": "agent_tab",
+            "fieldtype": "Tab Break",
+            "label": "Agent & Brain"
+        },
+        {
+            "fieldname": "agent_section",
+            "fieldtype": "Section Break",
+            "label": "Agent Behavior"
+        },
+        {
+            "default": "5",
+            "fieldname": "max_agent_loops",
+            "fieldtype": "Int",
+            "label": "Max Reasoning Loops"
+        },
+        {
+            "default": "0.7",
+            "fieldname": "response_temperature",
+            "fieldtype": "Float",
+            "label": "Response Temperature"
+        },
+        {
+            "fieldname": "cb_agent",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "20",
+            "fieldname": "context_message_limit",
+            "fieldtype": "Int",
+            "label": "Context Message Limit"
+        },
+        {
+            "fieldname": "caching_section",
+            "fieldtype": "Section Break",
+            "label": "Caching"
+        },
+        {
+            "default": "1",
+            "fieldname": "enable_caching",
+            "fieldtype": "Check",
+            "label": "Enable Caching"
+        },
+        {
+            "fieldname": "cb_cache",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "300",
+            "fieldname": "cache_ttl",
+            "fieldtype": "Int",
+            "label": "Cache TTL (Seconds)"
+        },
+        {
+            "fieldname": "advanced_tab",
+            "fieldtype": "Tab Break",
+            "label": "Advanced"
+        },
+        {
+            "fieldname": "system_section",
+            "fieldtype": "Section Break",
+            "label": "System Instructions"
+        },
+        {
+            "fieldname": "system_prompt_additions",
+            "fieldtype": "Small Text",
+            "label": "System Prompt Additions"
+        }
+    ],
+    "issingle": 1,
+    "links": [],
+    "modified": "2024-01-01 10:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Settings",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "email": 1,
+            "print": 1,
+            "read": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
 }

@@ -9,9 +9,7 @@ from tb_owlai_core.tool_registry import ToolRegistry
 from tb_owlai_core.owlai_core.agent import OwlAgent
 from tb_owlai_core.utils.context import OwlContext
 
-# Conversation memory settings
-CONTEXT_MESSAGE_LIMIT = 50  # Send last 50 messages to LLM
-
+# Conversation memory settings are now in OwlAI Settings
 
 def get_or_create_conversation(conversation_id=None):
     """Get existing conversation or create a new one for current user"""
@@ -40,11 +38,15 @@ def get_or_create_conversation(conversation_id=None):
     return conv
 
 
-def get_conversation_history(conversation, limit=CONTEXT_MESSAGE_LIMIT):
+def get_conversation_history(conversation, limit=None):
     """Load last N messages from a conversation for LLM context"""
     if not conversation.messages:
         return []
     
+    if limit is None:
+        settings = frappe.get_single("OwlAI Settings")
+        limit = settings.context_message_limit or 20
+
     # Get last N messages
     recent_messages = conversation.messages[-limit:] if len(conversation.messages) > limit else conversation.messages
     
@@ -221,7 +223,10 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
     )
     
     # 5. Instantiate and Run Agent
-    agent = OwlAgent(user=user, context=agent_context, conversation=conversation)
+    settings = frappe.get_single("OwlAI Settings")
+    max_steps = settings.max_agent_loops or 5
+    
+    agent = OwlAgent(user=user, context=agent_context, conversation=conversation, max_steps=max_steps)
     
     start_time = time.time()
     status = "Success"

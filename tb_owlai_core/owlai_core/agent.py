@@ -86,6 +86,13 @@ class OwlAgent:
             "\nAVAILABLE TOOLS:",
             json.dumps(tools, indent=2)
         ]
+        
+        # Inject Custom System Prompt Additions from Settings
+        settings = frappe.get_single("OwlAI Settings")
+        if settings.system_prompt_additions:
+            prompt.append("\nADDITIONAL INSTRUCTIONS:")
+            prompt.append(settings.system_prompt_additions)
+
         return "\n".join(prompt)
 
     def _parse_llm_response(self, text: str) -> Dict[str, Any]:
@@ -157,11 +164,15 @@ class OwlAgent:
             current_step += 1
             
             try:
+                settings = frappe.get_single("OwlAI Settings")
+                temperature =  settings.response_temperature if settings.response_temperature is not None else 0.7
+
                 response = completion(
                     model=self.config.get("model"),
                     messages=messages,
                     api_key=self.config.get("api_key"),
                     api_base=self.config.get("api_base"),
+                    temperature=temperature,
                     stop=["\nObservation:", "Observation:", "User:", "Note:"]
                 )
                 

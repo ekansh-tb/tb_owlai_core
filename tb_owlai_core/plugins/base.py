@@ -1,29 +1,38 @@
 import frappe
-from abc import ABC, abstractmethod
 import json
-
-from typing import Optional, Type, Dict, Any
+import time
+from abc import ABC, abstractmethod
+from typing import Optional, Type, Dict, Any, List, Tuple
 from pydantic import BaseModel, ValidationError
 
 class BaseTool(ABC):
     """
     Abstract base class for all OwlAI tools.
+    Enhanced with validation, permission checks, and robust execution logging.
     """
     args_schema: Optional[Type[BaseModel]] = None
 
     def __init__(self):
         self.name = "unnamed_tool"
         self.description = "No description provided"
+        # Default empty schema, will be overridden by args_schema if present
         self._input_schema = {
             "type": "object",
             "properties": {},
             "required": []
         }
-        self.requires_permission = None # Optional: "read", "write", "create", etc.
-        self.category = "Uncategorized"
+        self.requires_permission: Optional[str] = None # DocType permission required e.g. "Sales Order"
+        self.category = "Generic"
+        self.source_app = "tb_owlai_core"
+        self.dependencies: List[str] = []
+        self.default_config: Dict[str, Any] = {}
+        self.logger = frappe.logger(self.__class__.__module__)
 
     @property
-    def inputSchema(self):
+    def inputSchema(self) -> Dict[str, Any]:
+        """
+        Returns JSON schema for the tool. Use Pydantic schema if available.
+        """
         if self.args_schema:
             return self.args_schema.model_json_schema()
         return self._input_schema
@@ -33,39 +42,113 @@ class BaseTool(ABC):
         self._input_schema = value
 
     @abstractmethod
-    def execute(self, arguments):
+    def execute(self, arguments: Dict[str, Any]) -> Any:
         """
         Execute the tool with the given arguments.
         Must return a serializable result (dict, list, str, etc.)
         """
         pass
 
-    def _safe_execute(self, arguments):
+    def check_permission(self) -> None:
         """
-        Wrapper to handle validation, permissions, and error logging.
+        Check if current user has required permissions.
         """
-        try:
-            # 1. Permission check (basic)
-            if self.requires_permission and frappe.session.user != "Administrator":
-                # This is a placeholder. Real implementations might check specifically against a doctype
-                pass 
+        if self.requires_permission:
+            # Check read permission on the DocType
+            if not frappe.has_permission(self.requires_permission, "read"):
+                frappe.throw(
+                    f"Insufficient permissions to execute {self.name}. Required: {self.requires_permission}",
+                    frappe.PermissionError
+                )
 
-            # 2. Validation
+    def validate_dependencies(self) -> Tuple[bool, Optional[str]]:
+        """
+        Check if all tool dependencies are available.
+        """
+        if not self.dependencies:
+            return True, None
+
+        missing_deps = []
+        for dep in self.dependencies:
+            try:
+                __import__(dep)
+            except ImportError:
+                missing_deps.append(dep)
+
+        if missing_deps:
+            return False, f"Missing dependencies: {', '.join(missing_deps)}"
+
+        return True, None
+
+    def _safe_execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Safely execute tool with error handling, timing, and logging.
+        """
+        start_time = time.time()
+        
+        try:
+            # 1. Dependency Check
+            deps_valid, deps_error = self.validate_dependencies()
+            if not deps_valid:
+                return {"success": False, "error": deps_error, "error_type": "DependencyError"}
+
+            # 2. Permission Check
+            self.check_permission()
+
+            # 3. Argument Validation & Parsing
             cleaned_args = arguments
             if self.args_schema:
                 try:
-                    # Validate and convert to model, then back to dict for execute
-                    # This ensures parsing/types are correct
+                    # Validate and convert using Pydantic
                     model_instance = self.args_schema(**arguments)
                     cleaned_args = model_instance.model_dump()
                 except ValidationError as ve:
-                     return f"Tool Argument Error: {ve.errors()}"
+                    # Provide clear error message
+                    return {
+                        "success": False, 
+                        "error": f"Invalid Arguments: {ve.errors()}", 
+                        "error_type": "ValidationError"
+                    }
 
-            # 3. Execute
-            return self.execute(cleaned_args)
+            # 4. Execute
+            result = self.execute(cleaned_args)
+            execution_time = time.time() - start_time
+
+            # Log Success (Info level)
+            self.logger.info(f"Tool {self.name} executed in {execution_time:.3f}s")
+            
+            return {
+                "success": True, 
+                "result": result, 
+                "execution_time": execution_time
+            }
+
+        except frappe.PermissionError as e:
+            execution_time = time.time() - start_time
+            self.logger.warning(f"Permission denied for {self.name}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "PermissionError",
+                "execution_time": execution_time
+            }
+
         except Exception as e:
-            frappe.log_error(f"OwlAI Tool Error ({self.name})", str(e))
-            return f"Error executing tool '{self.name}': {str(e)}" 
+            execution_time = time.time() - start_time
+            # Detailed error logging
+            import traceback
+            trace = traceback.format_exc()
+            
+            error_msg = f"Tool {self.name} failed: {str(e)}"
+            self.logger.error(error_msg)
+            frappe.log_error(title=f"OwlAI Tool Error: {self.name}", message=f"{error_msg}\n\nArgs: {arguments}\n\n{trace}")
+
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "execution_time": execution_time
+            }
 
 class BasePlugin(ABC):
     """

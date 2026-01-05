@@ -222,7 +222,45 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
     
     # 5. Instantiate and Run Agent
     agent = OwlAgent(user=user, context=agent_context, conversation=conversation)
-    result = agent.run(text, image_file, audio_file)
+    
+    start_time = time.time()
+    status = "Success"
+    error_message = None
+    result = {}
+    
+    try:
+        result = agent.run(text, image_file, audio_file)
+    except Exception as e:
+        status = "Error"
+        error_message = str(traceback.format_exc())
+        frappe.log_error("OwlAI Agent Error")
+        result = {"reply": f"An error occurred: {str(e)}"}
+    finally:
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        stats = result.get("stats", {})
+        messages = result.get("messages", [])
+        
+        # Log Analytics
+        try:
+             log_analytics(
+                user=user,
+                config=config,
+                model=config.get("model"),
+                response_time=duration,
+                prompt_tokens=stats.get("prompt_tokens", 0),
+                completion_tokens=stats.get("completion_tokens", 0),
+                total_tokens=stats.get("total_tokens", 0),
+                status=status,
+                tool_calls=stats.get("tool_calls", []),
+                full_prompt=messages if messages else text,
+                full_response=result.get("message", ""),
+                error_message=error_message
+            )
+        except Exception as log_e:
+             print(f"Analytics Error: {log_e}")
+
     
     # result contains {"reply": "..."} coming from agent.run()
     # Add conversation_id for frontend tracking
@@ -244,7 +282,7 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
 
 
 @frappe.whitelist()
-def update_owlai_settings(model=None, api_key=None):
+def update_owlai_settings(model=None, api_key=None, enable_analytics=None):
     """Update settings directly from Chat UI"""
     if not frappe.session.user: return
     settings = frappe.get_single("OwlAI Settings")
@@ -254,6 +292,10 @@ def update_owlai_settings(model=None, api_key=None):
              settings.provider = "Generative AI (Gemini)"
     if api_key:
         settings.gemini_api_key = api_key
+    
+    if enable_analytics is not None:
+        settings.enable_analytics = int(enable_analytics)
+
     settings.save(ignore_permissions=True)
     frappe.db.commit()
     return {"status": "success"}

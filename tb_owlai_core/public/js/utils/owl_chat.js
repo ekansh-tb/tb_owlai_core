@@ -8,15 +8,12 @@ window.OwlChat = class OwlChat {
         this.conversation_id = null;
         this.conversations = [];
         this.is_open = false;
-        
-        // Wait for Frappe Navbar to be ready
+
         if (frappe.ui.toolbar) {
-             this.setup_ui();
+            this.setup_ui();
         } else {
-             $(document).on('toolbar_setup', () => this.setup_ui());
+            $(document).on('toolbar_setup', () => this.setup_ui());
         }
-        
-        this.load_last_conversation();
     }
 
     setup_ui() {
@@ -94,7 +91,7 @@ window.OwlChat = class OwlChat {
     mount_navbar_icon() {
         // Find the navbar actions area
         const $navbar_right = $('.navbar .navbar-right .nav.navbar-nav');
-        
+
         // Insert before Help or User menu
         const $li = $(`
             <li class="dropdown">
@@ -103,9 +100,9 @@ window.OwlChat = class OwlChat {
                 </a>
             </li>
         `);
-        
+
         $navbar_right.prepend($li);
-        
+
         $li.on('click', (e) => {
             e.preventDefault();
             this.toggle();
@@ -425,14 +422,14 @@ window.OwlChat = class OwlChat {
         // Suggestions Input Listener - DISABLED
         // $input.on('input', (e) => this.handle_input_change(e));
         // $input.on('focus', () => { if($input.val().trim()) this.show_suggestions(); });
-        
+
         // New Chat
         this.$modal.find('.owl-new-chat').on('click', () => this.start_new_conversation());
-        
+
         // History Sidebar Toggle
         this.$modal.find('.owl-history').on('click', () => this.toggle_sidebar());
         this.$modal.find('.owl-sidebar-close').on('click', () => this.toggle_sidebar(false));
-        
+
         // Voice
         this.setup_voice();
         // Paste
@@ -443,7 +440,7 @@ window.OwlChat = class OwlChat {
         const $sidebar = this.$modal.find('.owl-sidebar');
         const currentState = $sidebar.hasClass('expanded');
         const newState = forceState !== undefined ? forceState : !currentState;
-        
+
         if (newState) {
             $sidebar.addClass('expanded');
             this.show_conversation_history();
@@ -455,9 +452,10 @@ window.OwlChat = class OwlChat {
     toggle() {
         this.is_open = !this.is_open;
         if (this.is_open) {
+            this.start_new_conversation();
             this.$modal.removeClass('hidden');
             setTimeout(() => this.$modal.find('#owl-input').focus(), 50);
-            
+
             // Show sidebar by default on large screens
             if (window.innerWidth > 768) {
                 this.$modal.find('.owl-sidebar').addClass('expanded'); // Ensure sidebar is expanded
@@ -483,7 +481,7 @@ window.OwlChat = class OwlChat {
         const text = this.conversation_id ? `Session: ${this.conversation_id.slice(-5)}` : '';
         this.$modal.find('.owl-session-indicator').text(text).toggle(!!this.conversation_id);
     }
-    
+
     // ... Copy remaining core logic from previous file (load_last_conversation, show_conversation_history, process_request, etc)
     // But update handle_response for CONFIG
 
@@ -522,7 +520,7 @@ window.OwlChat = class OwlChat {
     render_conversation_list(conversations) {
         const $list = this.$modal.find('.owl-history-list');
         $list.empty();
-        
+
         if (conversations.length === 0) {
             $list.html('<div class="text-muted small p-2">No history found.</div>');
             return;
@@ -554,22 +552,22 @@ window.OwlChat = class OwlChat {
             if (items.length === 0) return;
 
             $list.append(`<div class="owl-history-group">${label}</div>`);
-            
+
             items.forEach(conv => {
                 // Determine Title: Use conv.title, or if missing/empty, use a friendly "New Chat" with small ID
                 let title = conv.title;
                 if (!title || title.trim() === '') {
                     title = "Conversation " + conv.name.slice(-4);
                 }
-                
+
                 const activeClass = (this.conversation_id === conv.name) ? 'active' : '';
-                
+
                 const $item = $(`
                     <div class="owl-history-item ${activeClass}" data-id="${conv.name}" title="${title}">
                         <div class="owl-history-title">${title}</div>
                     </div>
                 `);
-                
+
                 $item.on('click', () => this.load_conversation(conv.name));
                 $list.append($item);
             });
@@ -578,24 +576,24 @@ window.OwlChat = class OwlChat {
 
     load_conversation(conversation_id) {
         if (this.conversation_id === conversation_id) return;
-        
+
         this.save_conversation_id(conversation_id);
         this.$modal.find('.owl-history-item').removeClass('active');
         this.$modal.find(`.owl-history-item[data-id="${conversation_id}"]`).addClass('active');
 
         // Load Messages
         this.$modal.find('#owl-messages').html('<div class="message system">Loading conversation...</div>');
-        
+
         frappe.call({
             method: 'tb_owlai_core.api.router.get_conversation_messages',
             args: { conversation_id: conversation_id },
             callback: (r) => {
                 this.$modal.find('#owl-messages').empty();
                 if (r.message && r.message.length) {
-                   // Sort by creation asc
-                   r.message.sort((a,b) => (a.creation > b.creation) ? 1 : -1);
+                    // Sort by creation asc
+                    r.message.sort((a, b) => (a.creation > b.creation) ? 1 : -1);
 
-                   r.message.forEach(msg => {
+                    r.message.forEach(msg => {
                         if (msg.role === 'user') {
                             this.add_message(frappe.markdown(msg.content), 'user', msg.creation);
                         } else if (msg.role === 'assistant') {
@@ -606,9 +604,9 @@ window.OwlChat = class OwlChat {
                                 this.add_message(frappe.markdown(msg.content), 'assistant', msg.creation);
                             }
                         }
-                   });
-                   const $msgs = this.$modal.find('#owl-messages');
-                   $msgs.scrollTop($msgs[0].scrollHeight);
+                    });
+                    const $msgs = this.$modal.find('#owl-messages');
+                    $msgs.scrollTop($msgs[0].scrollHeight);
                 } else {
                     this.add_message("Conversation loaded (empty logs).", 'system');
                 }
@@ -617,8 +615,8 @@ window.OwlChat = class OwlChat {
     }
 
     // === Messaging ===
-    
-    add_message(html, role, timestamp=null) {
+
+    add_message(html, role, timestamp = null) {
         const $msgs = this.$modal.find('#owl-messages');
         const timeStr = timestamp ? frappe.datetime.str_to_user(timestamp).split(" ")[1] : moment().format('HH:mm');
         const displayTime = timeStr.slice(0, 5); // 14:30
@@ -629,9 +627,9 @@ window.OwlChat = class OwlChat {
                 ${role !== 'system' ? `<span class="message-time">${displayTime}</span>` : ''}
             </div>
         `;
-        
+
         $(msgHtml).appendTo($msgs);
-        
+
         // Auto scroll if needed
         $msgs.scrollTop($msgs[0].scrollHeight);
     }
@@ -643,8 +641,8 @@ window.OwlChat = class OwlChat {
 
         if (text) this.add_message(text, 'user');
         if (this.current_attachment) {
-             const url = URL.createObjectURL(this.current_attachment);
-             this.add_message(`<img src="${url}">`, 'user');
+            const url = URL.createObjectURL(this.current_attachment);
+            this.add_message(`<img src="${url}">`, 'user');
         }
 
         this.process_request(text, this.current_attachment);
@@ -655,7 +653,7 @@ window.OwlChat = class OwlChat {
 
     process_request(text, imageFile, audioBlob) {
         this.add_message('Thinking...', 'assistant loading');
-        
+
         // Context Gathering
         let context = {};
         try {
@@ -669,31 +667,31 @@ window.OwlChat = class OwlChat {
         }
 
         const formData = new FormData();
-        if(text) formData.append('text', text);
-        if(imageFile) formData.append('image', imageFile);
-        if(audioBlob) formData.append('audio', audioBlob, 'voice.wav');
+        if (text) formData.append('text', text);
+        if (imageFile) formData.append('image', imageFile);
+        if (audioBlob) formData.append('audio', audioBlob, 'voice.wav');
         formData.append('route', frappe.get_route_str());
         formData.append('context', JSON.stringify(context));
-        
-        if(this.conversation_id) formData.append('conversation_id', this.conversation_id);
+
+        if (this.conversation_id) formData.append('conversation_id', this.conversation_id);
 
         fetch('/api/method/tb_owlai_core.api.router.handle_input_v2', {
             method: 'POST',
             headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token },
             body: formData
         })
-        .then(r => r.json())
-        .then(res => this.handle_response(res))
-        .catch(err => {
-            this.remove_loading();
-            this.add_message("Error: " + err, 'assistant');
-        });
+            .then(r => r.json())
+            .then(res => this.handle_response(res))
+            .catch(err => {
+                this.remove_loading();
+                this.add_message("Error: " + err, 'assistant');
+            });
     }
 
     handle_response(res) {
         this.remove_loading();
         if (res.exc) { console.error(res.exc); this.add_message("Error occurred.", 'assistant'); return; }
-        
+
         const data = res.message;
         if (!data) return;
 
@@ -732,15 +730,15 @@ window.OwlChat = class OwlChat {
                 </div>
             </div>
         `;
-        
+
         this.add_message(html, 'assistant');
-        
+
         // Bind Save
         const $lastMsg = this.$modal.find('.message.assistant').last();
         $lastMsg.find('.owl-config-save').on('click', () => {
             const model = $lastMsg.find('.owl-model-select').val();
             const key = $lastMsg.find('.owl-api-key').val();
-            
+
             frappe.call({
                 method: 'tb_owlai_core.api.router.update_owlai_settings',
                 args: { model: model, api_key: key },
@@ -756,13 +754,13 @@ window.OwlChat = class OwlChat {
 
     handle_action(data) {
         if (data.action === 'create_doc') {
-             frappe.model.with_doctype(data.doctype, () => {
+            frappe.model.with_doctype(data.doctype, () => {
                 let doc = frappe.model.get_new_doc(data.doctype);
                 Object.assign(doc, data.data);
                 frappe.set_route('Form', data.doctype, doc.name);
                 this.add_message(`Drafted ${data.doctype}...`, 'assistant');
                 this.toggle(); // Close chat to show user
-             });
+            });
         } else if (data.action === 'navigate') {
             if (data.route_options) {
                 frappe.route_options = data.route_options;
@@ -789,22 +787,22 @@ window.OwlChat = class OwlChat {
                 html += `<div class="text-muted">No results found.</div>`;
             }
             html += `</div>`;
-            
+
             // Add style on the fly if needed (or assume it inherits from general styles)
             this.add_message(html, 'assistant');
         }
     }
 
     remove_loading() { this.$modal.find('.message.loading').remove(); }
-    
+
     // Voice & File handlers (simplified)
     setup_voice() {
         const $mic = this.$modal.find('#owl-mic-btn');
         $mic.on('click', () => {
-             frappe.msgprint("Voice integration paused for update. Please type for now!");
+            frappe.msgprint("Voice integration paused for update. Please type for now!");
         });
     }
-    
+
     handle_paste(e) {
         const items = (e.originalEvent || e).clipboardData.items;
         for (let item of items) {

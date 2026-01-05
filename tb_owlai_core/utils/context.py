@@ -10,6 +10,9 @@ class OwlContext:
         self.docname = None
         self._parse_route(route)
 
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
     def _parse_route(self, route):
         """
         Extracts DocType and DocName from the current route.

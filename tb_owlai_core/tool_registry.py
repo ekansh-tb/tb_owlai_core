@@ -31,6 +31,12 @@ class ToolRegistry:
             for tool in tools
         ]
 
+    def get_tools_schema(self):
+        """
+        Alias for get_available_tools to match Agent expectations.
+        """
+        return self.get_available_tools()
+
     def execute_tool(self, tool_name, arguments):
         """
         Execute a tool safely.
@@ -40,3 +46,9 @@ class ToolRegistry:
             return f"Error: Tool '{tool_name}' not found."
             
         return tool._safe_execute(arguments)
+
+    def execute(self, tool_name, arguments):
+        """
+        Alias for execute_tool to match Agent usage.
+        """
+        return self.execute_tool(tool_name, arguments)

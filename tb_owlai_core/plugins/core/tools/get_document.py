@@ -1,6 +1,11 @@
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Dict, Any
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+class GetDocumentSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name")
+    name: str = Field(..., description="Document ID/Name")
 
 class GetDocument(BaseTool):
     def __init__(self):
@@ -8,14 +13,7 @@ class GetDocument(BaseTool):
         self.name = "get_document"
         self.description = "Fetch specific details of a document. Requires document 'name' (ID)."
         self.category = "Core Operations"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string"},
-                "name": {"type": "string", "description": "Document ID/Name"}
-            },
-            "required": ["doctype", "name"]
-        }
+        self.args_schema = GetDocumentSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")

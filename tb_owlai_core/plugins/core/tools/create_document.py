@@ -1,8 +1,13 @@
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional
 import frappe
-from frappe import _
 from tb_owlai_core.plugins.base import BaseTool
-import json
+
+class CreateDocumentSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name (e.g., 'Task', 'Customer')")
+    data: Dict[str, Any] = Field(..., description="Fields and values. Child tables as list of dicts.")
+    submit: bool = Field(False, description="Submit after creation?")
+    validate_only: bool = Field(False, description="Validate without saving?")
 
 class CreateDocument(BaseTool):
     def __init__(self):
@@ -10,16 +15,7 @@ class CreateDocument(BaseTool):
         self.name = "create_document"
         self.description = "Create a new document. Supports child tables (list of dicts). Referenced records must exist."
         self.category = "Core Operations"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string", "description": "DocType name (e.g., 'Task', 'Customer')"},
-                "data": {"type": "object", "description": "Fields and values. Child tables as list of dicts."},
-                "submit": {"type": "boolean", "default": False, "description": "Submit after creation?"},
-                "validate_only": {"type": "boolean", "default": False, "description": "Validate without saving?"}
-            },
-            "required": ["doctype", "data"]
-        }
+        self.args_schema = CreateDocumentSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")

@@ -32,21 +32,21 @@ class CorePlugin(BasePlugin):
             "list_documents",
             "search_documents",
             
-            # Bulk
-            # "bulk_create_documents", # TODO: Phase 2
-            
             # Metadata
             "get_doctype_info",
             
             # Reporting
             "generate_report",
-            # "report_list", # TODO: Phase 2
             
             # Workflow
             "run_workflow",
             
+            # Primitives
+            "run_doc_method",
+            "sandbox",
+            
             # Navigation
-            "navigate",
+            "maps",
         ]
 
     def validate_environment(self):

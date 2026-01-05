@@ -2,21 +2,35 @@ import frappe
 from abc import ABC, abstractmethod
 import json
 
+from typing import Optional, Type, Dict, Any
+from pydantic import BaseModel, ValidationError
+
 class BaseTool(ABC):
     """
     Abstract base class for all OwlAI tools.
     """
+    args_schema: Optional[Type[BaseModel]] = None
+
     def __init__(self):
         self.name = "unnamed_tool"
         self.description = "No description provided"
-        # JSON Schema for the tool input.  Important for LLM understanding.
-        self.inputSchema = {
+        self._input_schema = {
             "type": "object",
             "properties": {},
             "required": []
         }
         self.requires_permission = None # Optional: "read", "write", "create", etc.
         self.category = "Uncategorized"
+
+    @property
+    def inputSchema(self):
+        if self.args_schema:
+            return self.args_schema.model_json_schema()
+        return self._input_schema
+
+    @inputSchema.setter
+    def inputSchema(self, value):
+        self._input_schema = value
 
     @abstractmethod
     def execute(self, arguments):
@@ -36,8 +50,19 @@ class BaseTool(ABC):
                 # This is a placeholder. Real implementations might check specifically against a doctype
                 pass 
 
-            # 2. Execute
-            return self.execute(arguments)
+            # 2. Validation
+            cleaned_args = arguments
+            if self.args_schema:
+                try:
+                    # Validate and convert to model, then back to dict for execute
+                    # This ensures parsing/types are correct
+                    model_instance = self.args_schema(**arguments)
+                    cleaned_args = model_instance.model_dump()
+                except ValidationError as ve:
+                     return f"Tool Argument Error: {ve.errors()}"
+
+            # 3. Execute
+            return self.execute(cleaned_args)
         except Exception as e:
             frappe.log_error(f"OwlAI Tool Error ({self.name})", str(e))
             return f"Error executing tool '{self.name}': {str(e)}" 

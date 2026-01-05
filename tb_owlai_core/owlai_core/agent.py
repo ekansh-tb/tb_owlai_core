@@ -1,9 +1,7 @@
 import frappe
 import json
-import time
-import traceback
 import base64
-from frappe.utils import get_link_to_form
+from typing import List, Dict, Any
 from litellm import completion
 from tb_owlai_core.tool_registry import ToolRegistry
 from tb_owlai_core.utils import get_active_provider_config
@@ -12,8 +10,6 @@ from tb_owlai_core.utils.context import OwlContext
 class OwlAgent:
     def __init__(self, user, context, conversation=None, max_steps=5):
         self.user = user
-        
-        # Support both OwlContext object and raw dict
         if isinstance(context, dict):
              self.context = OwlContext(
                  route=context.get('route'),
@@ -36,7 +32,6 @@ class OwlAgent:
         if not self.conversation or not self.conversation.messages:
             return
             
-        # Get last 50 messages
         limit = 50
         msgs = self.conversation.messages[-limit:] if len(self.conversation.messages) > limit else self.conversation.messages
         
@@ -164,28 +159,27 @@ class OwlAgent:
 
     def get_system_prompt(self):
         tools = self.registry.get_available_tools()
-        context_str = self.context.get_full_context_string() # Uses OwlContext for Scheme/Data
+        context_str = self.context.get_full_context_string() 
         
         prompt = [
             f"You are OwlAI, an intelligent ERP assistant integrated into Frappe Framework.",
-            f"Current User: {self.user}",
+            f"You are acting as user: {self.user}",
             f"Current Time: {frappe.utils.now()}",
-            f"\n{context_str}",  # Injected Visual Context from OwlContext
-            f"\nAVAILABLE TOOLS:\n{json.dumps(tools, indent=2)}",
-            "\nCAPABILITIES:",
-            "1. You can access and manipulate data within this ERP system.",
-            "2. You MUST use the provided tools to perform actions.",
-            "3. You operate with the permissions of the current logged-in user.",
-            "4. If a user asks to create a document, first check the Schema to know required fields.",
-            "\nCRITICAL RULES:",
-            "- ALWAYS try to use a tool if the user intent implies an action (searching, reading, creating).",
-            "- Output valid JSON when calling tools.",
-            "- Format: { \"action\": \"tool_name\", \"args\": { ... } }",
-            "- If you lack information (e.g., missing mandatory field), ASK the user.",
-             "2. RESPONSE FORMAT:",
-            "   - If you need to perform an action, return a JSON object: { \"action\": \"tool_name\", \"args\": { ... } }",
-            "   - If you want to answer the user, just write text.",
-            "- Be concise and professional."
+            f"System: The System IS the Context. You operate directly on the live database.",
+            f"\n{context_str}", 
+            f"\nAVAILABLE TOOLS SCHEMA:\n{json.dumps(tools, indent=2)}",
+            "\nCORE PHILOSOPHY & INSTRUCTIONS:",
+            "1. ACTION-FIRST: If a user asks something that requires data or navigation, USE A TOOL immediately.",
+            "2. NAVIGATION: For 'Go to [DocType]' or 'Show me...', use the 'Maps' tool. Prioritize 'Maps' over text.",
+            "3. FILTERED VIEWS: For 'Pending Sales Orders', use 'Maps' with 'filters' argument (e.g. {'status': 'Pending'}).",
+            "4. METRICS + ACTION: If user asks 'Sales Amount', calculate it (or use Sandbox/Report), and THEN provide a 'Maps' action to the relevant list.",
+            "   Example Response: 'Total Sales is $500. [Action: Maps(...)]'",
+            "5. PERMISSIONS: You inherit the user's permissions. Do not attempt restricted actions.",
+            "6. SCHEMAS: Always check valid fields in the Schema before Creating/Updating documents.",
+            "\nRESPONSE FORMAT:",
+            "   - If performing an action, output ONLY valid JSON: { \"action\": \"tool_name\", \"args\": { ... } }",
+            "   - If providing a final answer, just write clear text.",
+            "   - Do not output markdown code blocks for JSON if possible, but I will parse them if you do."
         ]
         
         return "\n".join(prompt)
@@ -201,15 +195,28 @@ class OwlAgent:
     def _parse_json(self, text):
         """Robust JSON extraction"""
         if not text: return None
-        clean = text.strip()
-        if "```json" in clean:
-            clean = clean.split("```json")[1].split("```")[0].strip()
-        elif "```" in clean:
-            clean = clean.split("```")[1].split("```")[0].strip()
-            
+        
+        # 1. Try extracting from code blocks first
+        if "```json" in text:
+            try:
+                block = text.split("```json")[1].split("```")[0].strip()
+                return json.loads(block)
+            except: pass
+        
+        if "```" in text:
+             try:
+                block = text.split("```")[1].split("```")[0].strip()
+                return json.loads(block)
+             except: pass
+
+        # 2. Try finding raw JSON in text (brute force finder)
         try:
-            if clean.startswith("{"):
-                return json.loads(clean)
+             start = text.find("{")
+             end = text.rfind("}")
+             if start != -1 and end != -1 and end > start:
+                 json_str = text[start:end+1]
+                 return json.loads(json_str)
         except:
-            pass
+             pass
+             
         return None

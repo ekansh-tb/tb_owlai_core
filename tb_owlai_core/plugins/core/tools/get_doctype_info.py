@@ -1,6 +1,10 @@
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Dict, Any
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+class GetDoctypeInfoSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name")
 
 class GetDoctypeInfo(BaseTool):
     def __init__(self):
@@ -8,13 +12,7 @@ class GetDoctypeInfo(BaseTool):
         self.name = "get_doctype_info"
         self.description = "Get schema information for a DocType (fields, types, permissions)."
         self.category = "Metadata"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string"}
-            },
-            "required": ["doctype"]
-        }
+        self.args_schema = GetDoctypeInfoSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")

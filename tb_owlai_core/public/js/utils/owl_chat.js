@@ -764,7 +764,14 @@ window.OwlChat = class OwlChat {
                 this.toggle(); // Close chat to show user
              });
         } else if (data.action === 'navigate') {
+            if (data.route_options) {
+                frappe.route_options = data.route_options;
+            }
             frappe.set_route(data.view || 'List', data.doctype);
+            this.toggle();
+        } else if (data.action === 'reload') {
+            frappe.ui.toolbar.clear_cache();
+            frappe.router.reload();
             this.toggle();
         } else if (data.action === 'list') {
             // Render a mini list in the chat

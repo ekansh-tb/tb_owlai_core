@@ -78,11 +78,11 @@ class OwlAgent:
             f"Current Time: {frappe.utils.now()}",
             f"Current Route: {json.dumps(self.context.get('route'))}",
             "\nCORE RULES:",
-            "1. ACTION-FIRST: If a user request implies a system action (viewing, creating, searching), use a tool immediately.",
+            "1. ACTION: If a user request implies a system action (viewing, creating, searching), use a tool immediately.",
             "2. SMART NAVIGATION: Use the 'Maps' tool for requests like 'Go to Sales Orders' or 'Show me my tasks'.",
             "3. NO HALLUCINATION: If a tool returns a 'LinkValidationError' (record not found), ask the user if they want to create it.",
             "4. RESPONSE FORMAT: If calling a tool, output ONLY valid JSON in this format: { \"action\": \"ToolName\", \"args\": { <arguments> } }.",
-            "5. NO INNER MONOLOGUE: Do not output thoughts like 'Action-First' or 'I will use...' in the final response. Just output the JSON."
+            "5. NO INNER MONOLOGUE: Do not output thoughts. If you need to use a tool, output ONLY the JSON object. If the task is complete, output a brief text confirmation."
             "\nAVAILABLE TOOLS:",
             json.dumps(tools, indent=2)
         ]
@@ -161,7 +161,8 @@ class OwlAgent:
                     model=self.config.get("model"),
                     messages=messages,
                     api_key=self.config.get("api_key"),
-                    api_base=self.config.get("api_base")
+                    api_base=self.config.get("api_base"),
+                    stop=["\nObservation:", "Observation:", "User:", "Note:"]
                 )
                 
                 # Track Token Usage
@@ -213,7 +214,10 @@ class OwlAgent:
                     
                     # Feed observation back
                     observation = f"Observation from {tool_name}: {json.dumps(result, default=str)}"
-                    messages.append({"role": "assistant", "content": raw_content})
+                    
+                    # Sanitize assistant message in history to ensure clean JSON for future turns
+                    clean_content = json.dumps({"action": tool_name, "args": tool_args})
+                    messages.append({"role": "assistant", "content": clean_content})
                     
                     # Ensure observation is valid string
                     messages.append({"role": "user", "content": str(observation)})

@@ -765,7 +765,13 @@ window.OwlChat = class OwlChat {
             if (data.route_options) {
                 frappe.route_options = data.route_options;
             }
-            frappe.set_route(data.view || 'List', data.doctype);
+
+            if (data.name) {
+                frappe.set_route(data.view || 'Form', data.doctype, data.name);
+            } else {
+                frappe.set_route(data.view || 'List', data.doctype);
+            }
+
             this.toggle();
         } else if (data.action === 'reload') {
             frappe.ui.toolbar.clear_cache();

@@ -78,7 +78,9 @@ class CreateDocument(BaseTool):
                 "name": doc.name,
                 "doctype": doc.doctype,
                 "status": "Submitted" if doc.docstatus == 1 else "Saved",
-                "message": f"Created {doctype}: {doc.name}"
+                "message": f"Created {doctype}: {doc.name}",
+                "action": "navigate",
+                "view": "Form"
             }
 
         except Exception as e:

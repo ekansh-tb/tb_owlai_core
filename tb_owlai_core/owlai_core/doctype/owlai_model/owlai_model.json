@@ -1,0 +1,95 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{model_name}-{provider}",
+ "creation": "2026-01-06 06:43:43.816909",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "model_name",
+  "provider",
+  "context_window",
+  "supports_vision",
+  "supports_function_calling",
+  "cost_per_input_token",
+  "cost_per_output_token"
+ ],
+ "fields": [
+  {
+   "description": "e.g. gpt-4, llama3",
+   "fieldname": "model_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Model Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Provider",
+   "options": "OwlAI Provider",
+   "reqd": 1
+  },
+  {
+   "default": "8192",
+   "fieldname": "context_window",
+   "fieldtype": "Int",
+   "label": "Context Window"
+  },
+  {
+   "default": "0",
+   "fieldname": "supports_vision",
+   "fieldtype": "Check",
+   "label": "Supports Vision"
+  },
+  {
+   "default": "0",
+   "fieldname": "supports_function_calling",
+   "fieldtype": "Check",
+   "label": "Supports Function Calling"
+  },
+  {
+   "fieldname": "cost_per_input_token",
+   "fieldtype": "Currency",
+   "label": "Cost per Input Token",
+   "precision": "7"
+  },
+  {
+   "fieldname": "cost_per_output_token",
+   "fieldtype": "Currency",
+   "label": "Cost per Output Token",
+   "precision": "7"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-06 06:43:43.816909",
+ "modified_by": "Administrator",
+ "module": "OwlAI Core",
+ "name": "OwlAI Model",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "show_name_in_global_search": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

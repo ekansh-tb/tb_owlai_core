@@ -1,0 +1,79 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-06 06:43:43.919897",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tool_name",
+  "type",
+  "method_path",
+  "args_schema",
+  "enable_cache"
+ ],
+ "fields": [
+  {
+   "fieldname": "tool_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tool Name",
+   "reqd": 1
+  },
+  {
+   "default": "Python Method",
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "label": "Tool Type",
+   "options": "Python Method\nDocType CRUD\nAPI Call\nWorkflow",
+   "reqd": 1
+  },
+  {
+   "description": "e.g. frappe.client.get_list",
+   "fieldname": "method_path",
+   "fieldtype": "Data",
+   "label": "Method Path"
+  },
+  {
+   "fieldname": "args_schema",
+   "fieldtype": "Code",
+   "label": "Arguments Schema",
+   "options": "JSON"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_cache",
+   "fieldtype": "Check",
+   "label": "Enable Caching"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-06 06:43:43.919897",
+ "modified_by": "Administrator",
+ "module": "OwlAI Core",
+ "name": "OwlAI Tool",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "show_name_in_global_search": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

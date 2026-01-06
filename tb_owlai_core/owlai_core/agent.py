@@ -82,7 +82,8 @@ class OwlAgent:
             "2. SMART NAVIGATION: Use the 'Maps' tool for requests like 'Go to Sales Orders' or 'Show me my tasks'.",
             "3. NO HALLUCINATION: If a tool returns a 'LinkValidationError' (record not found), ask the user if they want to create it.",
             "4. RESPONSE FORMAT: If calling a tool, output ONLY valid JSON in this format: { \"action\": \"ToolName\", \"args\": { <arguments> } }.",
-            "5. NO INNER MONOLOGUE: Do not output thoughts. If you need to use a tool, output ONLY the JSON object. If the task is complete, output a brief text confirmation."
+            "5. NO INNER MONOLOGUE: Do not output thoughts. If you need to use a tool, output ONLY the JSON object. If the task is complete, Close the conversation and Navigate to that route. Unless explicitly other instrcutions given by user.",
+            "6. SCHEMA VALIDATION: Before creating a new document, if the field names are not explicitly known from context, use 'get_doctype_info' to fetch the schema. Do not guess field names (e.g., use 'first_name' instead of 'name').",
             "\nAVAILABLE TOOLS:",
             json.dumps(tools, indent=2)
         ]

@@ -30,12 +30,29 @@ class CreateDocument(BaseTool):
         # This fixes common LLM hallucinations for simple DocTypes like ToDo
         try:
             meta = frappe.get_meta(doctype)
+            
+            # Strict Field Validation: Check if provided fields actually exist in the DocType
+            # This prevents the agent from hallucinating fields (e.g., 'join_date' instead of 'date_of_joining')
+            valid_fields = {f.fieldname for f in meta.fields}
+            valid_fields.update(["name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "doctype", "flags", "_user_tags", "_comments", "_assign", "_liked_by"])
+            
+            invalid_fields = [k for k in data.keys() if k not in valid_fields and not k.startswith("_")]
+            
+            if invalid_fields:
+                return {
+                    "error": f"Invalid fields for {doctype}: {', '.join(invalid_fields)}. Please use 'get_doctype_info' to verify the schema before creating."
+                }
+
             if "title" in data and not meta.has_field("title") and meta.has_field("description"):
                 description_field = meta.get_field("description")
                 if description_field.reqd and not data.get("description"):
                     data["description"] = data.pop("title")
-        except Exception:
-            pass # Ignore meta errors here, will catch later
+        except Exception as e:
+            # If meta fetch fails, we can't validate, but we'll catch specific errors later.
+            # However, if invalid_fields logic caused this, we should be careful.
+            # Assuming get_meta is safe if doctype exists (checked above).
+            if "Invalid fields" in str(e): raise e
+            pass 
 
         # Permission Check
         if not frappe.has_permission(doctype, "create"):
@@ -83,6 +100,11 @@ class CreateDocument(BaseTool):
                 "view": "Form"
             }
 
+        except frappe.MandatoryError as e:
+            missing_fields = ", ".join(e.args[0]) if e.args and isinstance(e.args[0], list) else str(e)
+            return {
+                "error": f"Missing mandatory fields: {missing_fields}. Please use 'get_doctype_info' to verify the correct field names (schema) for '{doctype}'."
+            }
         except Exception as e:
             frappe.log_error(f"Create Document Error: {str(e)}")
             return {"error": str(e)}

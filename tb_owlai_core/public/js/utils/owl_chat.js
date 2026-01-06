@@ -92,38 +92,27 @@ window.OwlChat = class OwlChat {
         // Prevent Duplicate
         if ($('.owl-navbar-icon-li').length) return;
 
-        // Find the navbar actions list.
-        // We target the UL inside navbar-right to ensure valid HTML (li inside ul)
+        // Try to place it near the search bar (awesome bar)
+        // Standard Frappe v13/14/15 places search in .search-bar or .navbar-center
+        // We will try to prepend to .navbar-right to be just to the right of the center block.
         const $navbar_right = $('.navbar .navbar-right .nav.navbar-nav');
+        
+        if (!$navbar_right.length) {
+            // Fallback for different themes/versions
+             setTimeout(() => this.mount_navbar_icon(), 1000);
+             return;
+        }
 
-        // Icon URL
-        const icon_url = "/assets/tb_owlai_core/frontend/favicon.png";
-
-        // Create LI element
+        // Icon Button
         const $li = $(`
             <li class="nav-item owl-navbar-icon-li" title="Ask OwlAI (Ctrl+K)">
-                <a class="nav-link" href="#" onclick="return false;">
-                    <img src="${icon_url}" class="owl-nav-icon-img" alt="OwlAI">
+                <a class="nav-link" href="#" onclick="return false;" style="display: flex; align-items: center; padding: 12px 10px;">
+                    <span style="font-size: 18px; line-height: 1;">🦉</span>
                 </a>
             </li>
         `);
 
-        // Style the image inline for safety
-        $li.find('img').css({
-            'height': '18px',
-            'width': 'auto',
-            'vertical-align': 'text-top',
-            'object-fit': 'contain',
-            'filter': 'grayscale(100%) opacity(0.7)'
-        });
-
-        // Hover effect
-        $li.hover(
-            function () { $(this).find('img').css('filter', 'none'); },
-            function () { $(this).find('img').css('filter', 'grayscale(100%) opacity(0.7)'); }
-        );
-
-        // Prepend to the list (placing it first, near the search bar)
+        // Prepend to the right-side menu (making it the first item on the right)
         $navbar_right.prepend($li);
 
         $li.on('click', (e) => {
@@ -135,33 +124,46 @@ window.OwlChat = class OwlChat {
     add_styles() {
         const css = `
             :root {
-                --owl-bg: var(--card-bg, #fff);
+                --owl-bg: var(--card-bg, #ffffff);
                 --owl-sidebar-bg: var(--control-bg, #f8fafc);
                 --owl-border: var(--border-color, #e2e8f0);
-                --owl-text: var(--text-color, #1f2937);
+                --owl-text: var(--text-color, #1e293b);
                 --owl-text-muted: var(--text-muted, #64748b);
                 --owl-hover: var(--fg-hover-color, #f1f5f9);
-                --owl-primary: var(--primary-color, #4f46e5);
-                --owl-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                --owl-primary: var(--primary-color, #6366f1);
+                --owl-primary-fg: #ffffff;
+                --owl-user-msg-bg: var(--owl-primary);
+                --owl-user-msg-text: #ffffff;
+                --owl-assistant-msg-bg: var(--control-bg, #eff6ff);
+                --owl-assistant-msg-text: var(--text-color, #1e293b);
+                --owl-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+                --owl-font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                --owl-radius: 16px;
+                --owl-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             }
             [data-theme="dark"] {
-                --owl-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                --owl-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+                --owl-assistant-msg-bg: var(--control-bg, #1e293b);
+            }
+
+            /* Global Reset for Owl Modal */
+            .owl-spotlight-container *, .owl-spotlight-container *::before, .owl-spotlight-container *::after {
+                box-sizing: border-box;
             }
 
             /* Overlay */
             .owl-spotlight-overlay {
                 position: fixed;
                 top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.4);
-                backdrop-filter: blur(2px);
+                background: rgba(0, 0, 0, 0.3);
+                backdrop-filter: blur(4px);
                 z-index: 10001;
                 display: flex;
-                align-items: flex-start;
+                align-items: center; 
                 justify-content: center;
-                padding-top: 8vh;
                 opacity: 0;
                 pointer-events: none;
-                transition: opacity 0.2s;
+                transition: opacity 0.2s ease;
             }
             .owl-spotlight-overlay:not(.hidden) {
                 opacity: 1;
@@ -170,24 +172,24 @@ window.OwlChat = class OwlChat {
 
             /* Container */
             .owl-spotlight-container {
-                width: 900px;
+                width: 960px;
                 max-width: 95vw;
-                height: 700px;
-                max-height: 85vh;
+                height: 750px;
+                max-height: 90vh;
                 background: var(--owl-bg);
-                border-radius: 12px;
+                border-radius: var(--owl-radius);
                 box-shadow: var(--owl-shadow);
                 display: flex;
                 flex-direction: row;
                 overflow: hidden;
-                transform: translateY(10px);
-                transition: transform 0.2s;
+                transform: scale(0.98) translateY(10px);
+                transition: transform 0.2s ease, opacity 0.2s ease;
                 border: 1px solid var(--owl-border);
                 color: var(--owl-text);
-                font-family: var(--font-stack, sans-serif);
+                font-family: var(--owl-font);
             }
             .owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
-                transform: translateY(0);
+                transform: scale(1) translateY(0);
             }
 
             /* Sidebar */
@@ -197,26 +199,35 @@ window.OwlChat = class OwlChat {
                 border-right: 1px solid var(--owl-border);
                 display: flex;
                 flex-direction: column;
-                transition: width 0.2s ease-in-out;
+                transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                 overflow: hidden;
             }
             .owl-sidebar.expanded {
-                width: 260px;
+                width: 280px;
             }
             .owl-sidebar-header {
-                padding: 16px;
-                font-weight: 600;
+                padding: 18px 20px;
+                font-weight: 700;
                 font-size: 14px;
+                letter-spacing: 0.02em;
                 border-bottom: 1px solid var(--owl-border);
                 display: flex; justify-content: space-between; align-items: center;
-                white-space: nowrap;
                 color: var(--owl-text);
+                background: var(--owl-sidebar-bg);
             }
             
             .owl-history-list {
                 flex: 1;
                 overflow-y: auto;
-                padding: 8px;
+                padding: 12px;
+            }
+            /* Custom Scrollbar */
+            .owl-history-list::-webkit-scrollbar, .owl-messages::-webkit-scrollbar {
+                width: 6px;
+            }
+            .owl-history-list::-webkit-scrollbar-thumb, .owl-messages::-webkit-scrollbar-thumb {
+                background: var(--owl-border);
+                border-radius: 3px;
             }
 
             .owl-history-group {
@@ -224,33 +235,32 @@ window.OwlChat = class OwlChat {
                 font-weight: 700;
                 color: var(--owl-text-muted);
                 text-transform: uppercase;
-                margin: 16px 12px 6px 12px;
+                letter-spacing: 0.05em;
+                margin: 20px 12px 8px 12px;
             }
             
             .owl-history-item {
-                padding: 8px 12px;
-                margin-bottom: 2px;
-                border-radius: 6px;
+                padding: 10px 14px;
+                margin-bottom: 4px;
+                border-radius: 8px;
                 font-size: 13px;
                 cursor: pointer;
                 color: var(--owl-text);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                transition: background 0.1s;
+                transition: var(--owl-transition);
                 border: 1px solid transparent;
             }
             .owl-history-item:hover {
                 background: var(--owl-hover);
+                transform: translateX(2px);
             }
             .owl-history-item.active {
-                background: var(--fg-color, #fff);
+                background: var(--owl-bg);
                 border-color: var(--owl-border);
-                font-weight: 500;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            }
-            [data-theme="dark"] .owl-history-item.active {
-                background: var(--card-bg);
+                font-weight: 600;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.03);
             }
 
             /* Main Area */
@@ -259,169 +269,195 @@ window.OwlChat = class OwlChat {
                 display: flex;
                 flex-direction: column;
                 min-width: 0;
+                background: var(--owl-bg);
             }
 
             /* Header */
             .owl-header {
-                padding: 12px 20px;
+                padding: 16px 24px;
                 border-bottom: 1px solid var(--owl-border);
                 display: flex; justify-content: space-between; align-items: center;
-                background: var(--owl-bg);
+                background: rgba(255,255,255,0.05); /* Slight transparency helper */
             }
-            .owl-header-left { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--owl-text); }
-            .owl-header-right { display: flex; align-items: center; gap: 8px; }
-            .owl-logo { font-size: 20px; }
+            .owl-header-left { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; color: var(--owl-text); }
+            .owl-logo { font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
             
+            .owl-header-right { display: flex; align-items: center; gap: 8px; }
             .owl-btn-icon {
-                background: transparent; border: none; cursor: pointer; padding: 6px;
-                color: var(--owl-text-muted); transition: all 0.2s; border-radius: 6px;
+                background: transparent; border: 1px solid transparent; cursor: pointer; padding: 8px;
+                color: var(--owl-text-muted); transition: var(--owl-transition); border-radius: 8px;
                 display: inline-flex; align-items: center; justify-content: center;
+                height: 34px; width: 34px;
             }
-            .owl-btn-icon:hover { background: var(--owl-hover); color: var(--owl-text); }
+            .owl-btn-icon:hover { 
+                background: var(--owl-hover); 
+                color: var(--owl-text); 
+                border-color: var(--owl-border);
+            }
 
             /* Messages */
             .owl-messages {
                 flex: 1;
-                padding: 20px;
+                padding: 24px;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
-                gap: 16px;
-                background: var(--owl-bg);
+                gap: 24px;
+                scroll-behavior: smooth;
             }
 
             .message {
-                max-width: 85%;
-                padding: 10px 16px;
-                border-radius: 12px;
-                font-size: 14px;
+                max-width: 80%;
+                padding: 14px 18px;
+                border-radius: 18px;
+                font-size: 15px;
                 line-height: 1.6;
                 position: relative;
                 word-wrap: break-word;
+                animation: fadeIn 0.3s ease-out forwards;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
             .message.system { 
                 align-self: center; 
                 background: var(--owl-sidebar-bg); 
                 color: var(--owl-text-muted); 
-                font-size: 12px; 
-                padding: 6px 12px;
+                font-size: 13px; 
+                padding: 8px 16px;
                 border: 1px solid var(--owl-border);
-                border-radius: 20px;
+                border-radius: 24px;
+                max-width: 90%;
+                text-align: center;
+                box-shadow: none;
             }
             .message.user { 
                 align-self: flex-end; 
-                background: var(--owl-primary); 
-                color: #fff; 
-                border-bottom-right-radius: 2px; 
+                background: var(--owl-user-msg-bg); 
+                color: var(--owl-user-msg-text); 
+                border-bottom-right-radius: 4px; 
             }
+            /* Assistant Message */
             .message.assistant { 
                 align-self: flex-start; 
-                background: var(--owl-sidebar-bg); 
-                color: var(--owl-text); 
-                border-bottom-left-radius: 2px;
+                background: var(--owl-assistant-msg-bg); 
+                color: var(--owl-assistant-msg-text); 
+                border-bottom-left-radius: 4px;
                 border: 1px solid var(--owl-border);
             }
-            
+            /* Formatted Content inside Messages */
+            .message-content h1, .message-content h2, .message-content h3 {
+                margin-top: 0.5em; margin-bottom: 0.5em; font-weight: 700;
+            }
+            .message-content p { margin-bottom: 0.5em; }
+            .message-content p:last-child { margin-bottom: 0; }
+            .message-content pre { 
+                background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; margin: 8px 0; overflow-x: auto; 
+            }
+            .message-content code {
+                font-family: 'Fira Code', monospace;
+                font-size: 0.9em;
+            }
+
             .message-time {
                 font-size: 10px;
-                margin-top: 4px;
+                margin-top: 6px;
                 text-align: right;
-                opacity: 0.7;
+                opacity: 0.6;
                 display: block;
+                font-weight: 500;
             }
             
             /* Input Area */
             .owl-input-area {
-                padding: 16px 20px;
+                padding: 20px 24px;
                 border-top: 1px solid var(--owl-border);
                 background: var(--owl-bg);
             }
             .owl-input-wrapper {
-                background: var(--control-bg);
+                background: var(--owl-sidebar-bg); /* Contrast */
                 border: 1px solid var(--owl-border);
-                border-radius: 10px;
-                padding: 8px 12px;
+                border-radius: 14px;
+                padding: 12px 16px;
                 display: flex;
                 align-items: flex-end;
-                transition: border-color 0.2s, box-shadow 0.2s;
+                transition: var(--owl-transition);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
             }
             .owl-input-wrapper:focus-within { 
                 border-color: var(--owl-primary); 
-                box-shadow: 0 0 0 2px var(--primary-light, rgba(79, 70, 229, 0.1)); 
+                box-shadow: 0 0 0 3px var(--primary-light, rgba(99, 102, 241, 0.2)); 
+                background: var(--owl-bg);
             }
             
+            .owl-search-icon { font-size: 20px; margin-right: 12px; margin-bottom: 4px; opacity: 0.8; }
+
             #owl-input {
                 flex: 1;
                 border: none;
                 outline: none;
                 resize: none;
-                max-height: 150px;
+                max-height: 200px;
                 min-height: 24px;
                 font-family: inherit;
-                font-size: 14px;
+                font-size: 15px;
                 padding: 4px 0;
                 background: transparent;
                 color: var(--owl-text);
                 line-height: 1.5;
             }
-            #owl-input::placeholder { color: var(--owl-text-muted); }
+            #owl-input::placeholder { color: var(--owl-text-muted); opacity: 0.7; }
 
-            .owl-input-actions { display: flex; align-items: center; gap: 6px; margin-left: 8px; padding-bottom: 2px; }
+            .owl-input-actions { display: flex; align-items: center; gap: 8px; margin-left: 12px; padding-bottom: 2px; }
             .owl-send-btn { 
                 background: var(--owl-primary); color: white; 
-                width: 30px; height: 30px; 
-                border-radius: 6px; border: none; 
+                width: 36px; height: 36px; 
+                border-radius: 10px; border: none; 
                 display: flex; align-items: center; justify-content: center;
-                cursor: pointer; transition: opacity 0.2s;
+                cursor: pointer; transition: var(--owl-transition);
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             }
-            .owl-send-btn:hover { opacity: 0.9; }
+            .owl-send-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+            .owl-send-btn:active { transform: translateY(0); }
             
             .owl-footer-hint {
-                display: flex; justify-content: flex-end; gap: 15px;
-                font-size: 11px; color: var(--owl-text-muted); margin-top: 8px;
+                display: flex; justify-content: flex-end; gap: 16px;
+                font-size: 11px; color: var(--owl-text-muted); margin-top: 10px;
+                font-weight: 500;
             }
 
             /* Config Form */
             .owl-config-form {
-                background: var(--control-bg, white);
-                padding: 15px;
-                border-radius: 8px;
-                border: 1px solid var(--border-color, #e2e8f0);
-                margin-top: 10px;
-                display: flex; flex-direction: column; gap: 10px;
-            }
-            .owl-config-form label { font-size: 12px; font-weight: 600; color: var(--text-muted, #64748b); margin-bottom: 4px; display: block; }
-            .owl-config-form select, .owl-config-form input {
-                width: 100%; padding: 8px; 
-                border: 1px solid var(--border-color, #cbd5e1); 
-                border-radius: 6px; font-size: 13px;
-                background: var(--control-bg, #fff); color: var(--text-color);
+                background: var(--owl-bg);
+                padding: 16px;
+                border-radius: 12px;
+                border: 1px solid var(--owl-border);
+                margin-top: 12px;
+                display: flex; flex-direction: column; gap: 12px;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
             }
             .owl-config-save {
-                background: var(--text-color, #0f172a); color: var(--card-bg, white); border: none; padding: 8px; border-radius: 6px;
-                cursor: pointer; font-size: 13px; font-weight: 500; margin-top: 5px;
+                background: var(--owl-primary); color: white; border: none; padding: 10px; border-radius: 8px;
+                cursor: pointer; font-size: 13px; font-weight: 600;
             }
-            .owl-config-save:hover { opacity: 0.9; }
 
-            /* Preview */
-            .owl-preview-area { display: flex; gap: 8px; margin-bottom: 8px; padding-bottom: 4px; overflow-x: auto; }
-            .owl-preview-img { height: 60px; border-radius: 6px; border: 1px solid var(--border-color, #ddd); object-fit: cover; }
-            
             /* List Results */
-            .owl-list-results { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+            .owl-list-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
             .owl-list-item { 
-                background: var(--control-bg, white); 
-                border: 1px solid var(--border-color, #e2e8f0); 
-                padding: 10px; border-radius: 8px; 
+                background: var(--owl-bg); 
+                border: 1px solid var(--owl-border); 
+                padding: 12px 16px; border-radius: 10px; 
                 cursor: pointer; transition: all 0.2s;
-                color: var(--text-color, #1f2937);
+                color: var(--owl-text);
             }
             .owl-list-item:hover { 
-                border-color: var(--primary-color, #6366f1); 
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-                background: var(--fg-hover-color, #f9fafb);
+                border-color: var(--owl-primary); 
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+                transform: translateY(-2px);
             }
-            .owl-list-item .text-muted { color: var(--text-muted) !important; }
         `;
         $('<style>').text(css).appendTo('head');
     }
@@ -614,8 +650,15 @@ window.OwlChat = class OwlChat {
             callback: (r) => {
                 this.$modal.find('#owl-messages').empty();
                 if (r.message && r.message.length) {
-                    // Sort by creation asc
-                    r.message.sort((a, b) => (a.creation > b.creation) ? 1 : -1);
+                    // Sort by idx (primary) and creation (secondary)
+                    r.message.sort((a, b) => {
+                        // Use idx if available and distinct
+                        if (a.idx !== undefined && b.idx !== undefined && a.idx !== b.idx) {
+                            return a.idx - b.idx;
+                        }
+                        // Fallback to creation time
+                        return (a.creation > b.creation) ? 1 : -1;
+                    });
 
                     r.message.forEach(msg => {
                         if (msg.role === 'user') {

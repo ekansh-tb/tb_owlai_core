@@ -343,6 +343,7 @@ def get_conversation_messages(conversation_id):
                 "content": m.content,
                 "message_type": m.message_type,
                 "creation": m.creation,
+                "idx": m.idx,
                 "action_data": action_data
             })
         return messages

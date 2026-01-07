@@ -59,14 +59,15 @@ class OwlAgent:
                 # Construct config from new DocTypes
                 config = {
                     "model": f"{provider_doc.provider_name.lower()}/{model_doc.model_name}", # litellm format assumption
-                    "api_key": provider_doc.get_password("api_key"),
+                    "model_doc_name": model_doc.name,
+                    "api_key": provider_doc.get_password("api_key", raise_exception=False),
                     "api_base": provider_doc.api_base,
                     "provider": provider_doc.provider_name.lower()
                 }
                 
                 # adjustments for specific providers if needed
                 if config["provider"] == "ollama":
-                     config["model"] = f"ollama/{model_doc.model_name}"
+                     # config["model"] is already set to "ollama/{model_name}" by default logic
                      if not config["api_base"]:
                          config["api_base"] = "http://localhost:11434"
                 

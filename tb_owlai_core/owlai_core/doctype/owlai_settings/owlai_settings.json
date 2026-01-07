@@ -85,10 +85,11 @@
             "fieldtype": "Column Break"
         },
         {
-            "default": "gemini-1.5-flash",
+            "default": "gemini-1.5-flash-Google Gemini",
             "fieldname": "gemini_model",
-            "fieldtype": "Data",
-            "label": "Gemini Model"
+            "fieldtype": "Link",
+            "label": "Gemini Model",
+            "options": "OwlAI Model"
         },
         {
             "collapsible": 1,
@@ -113,16 +114,18 @@
             "fieldtype": "Column Break"
         },
         {
-            "default": "llama3",
+            "default": "llama3-Ollama",
             "fieldname": "ollama_model",
-            "fieldtype": "Data",
-            "label": "Ollama Model"
+            "fieldtype": "Link",
+            "label": "Ollama Model",
+            "options": "OwlAI Model"
         },
         {
-            "default": "llama3.2-vision",
+            "default": "llama3.2-vision-Ollama",
             "fieldname": "vision_model",
-            "fieldtype": "Data",
-            "label": "Vision Model (Local)"
+            "fieldtype": "Link",
+            "label": "Vision Model (Local)",
+            "options": "OwlAI Model"
         },
         {
             "fieldname": "agent_tab",

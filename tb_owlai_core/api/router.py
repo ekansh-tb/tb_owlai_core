@@ -157,8 +157,8 @@ def log_analytics(user, config, model, response_time, prompt_tokens, completion_
             "user": user,
             "timestamp": frappe.utils.now(),
             "status": status,
-            "provider": config.get("provider"),
-            "model": model,
+            "provider": _resolve_provider_link(config.get("provider")),
+            "model": _resolve_model_link(model),
             "response_time": response_time,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
@@ -172,7 +172,59 @@ def log_analytics(user, config, model, response_time, prompt_tokens, completion_
         frappe.db.commit()
     except Exception as e:
         print(f"Failed to log analytics: {e}")
-        frappe.log_error("OwlAI Analytics Log Error")
+        # traceback.print_exc() 
+        # Don't throw error to UI for analytics failure
+
+def _resolve_provider_link(provider_identifier):
+    """
+    Ensures the provider field contains a valid OwlAI Provider name.
+    """
+    if not provider_identifier: return None
+    
+    # 1. Direct match
+    if frappe.db.exists("OwlAI Provider", provider_identifier):
+        return provider_identifier
+        
+    # 2. Case-insensitive match (e.g. 'ollama' -> 'Ollama')
+    provider_name = frappe.db.get_value("OwlAI Provider", 
+                                      {"name": ["matches", provider_identifier]}, 
+                                      "name")
+    if provider_name:
+        return provider_name
+
+    # 3. Try partial map or common alises (optional)
+    if provider_identifier.lower() == "google": return "Google Gemini"
+    
+    return None
+
+def _resolve_model_link(model_identifier):
+    """
+    Ensures the model field contains a valid OwlAI Model name (Link).
+    Input could be:
+    1. Valid Link Name definition 'qwen2.5:1.5b-Ollama'
+    2. LiteLLM identifier 'ollama/qwen2.5:1.5b'
+    3. Just model name 'qwen2.5:1.5b'
+    """
+    if not model_identifier: return None
+    
+    # 1. Check if valid Link
+    if frappe.db.exists("OwlAI Model", model_identifier):
+        return model_identifier
+        
+    # 2. Try to reverse lookup by model_name
+    # Handle 'provider/model' format
+    search_name = model_identifier
+    if "/" in model_identifier:
+        search_name = model_identifier.split("/", 1)[1]
+    
+    # Simple search
+    found = frappe.db.get_value("OwlAI Model", {"model_name": search_name}, "name")
+    if found: return found
+    
+    # 3. Try fuzzy search if strict match fails (optional, maybe overkill?)
+    
+    # If not found, return None to avoid LinkValidationError since field is not mandatory
+    return None
 
 
 @frappe.whitelist()
@@ -261,7 +313,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
              log_analytics(
                 user=user,
                 config=agent.config, # Use agent's resolved config
-                model=agent.config.get("model"),
+                model=agent.config.get("model_doc_name") or agent.config.get("model"),
                 response_time=duration,
                 prompt_tokens=stats.get("prompt_tokens", 0),
                 completion_tokens=stats.get("completion_tokens", 0),

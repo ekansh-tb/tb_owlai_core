@@ -1,148 +1,150 @@
 {
- "actions": [],
- "allow_rename": 1,
- "creation": "2024-01-01 10:00:00.000000",
- "doctype": "DocType",
- "engine": "InnoDB",
- "field_order": [
-  "user",
-  "timestamp",
-  "status",
-  "column_break_1",
-  "provider",
-  "model",
-  "response_time",
-  "section_break_usage",
-  "prompt_tokens",
-  "completion_tokens",
-  "total_tokens",
-  "section_break_details",
-  "tool_calls",
-  "error_message",
-  "full_prompt",
-  "full_response"
- ],
- "fields": [
-  {
-   "fieldname": "user",
-   "fieldtype": "Link",
-   "label": "User",
-   "options": "User",
-   "in_list_view": 1,
-   "reqd": 1
-  },
-  {
-   "fieldname": "timestamp",
-   "fieldtype": "Datetime",
-   "label": "Timestamp",
-   "in_list_view": 1,
-   "reqd": 1
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Success\nError",
-   "in_list_view": 1,
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "provider",
-   "fieldtype": "Data",
-   "label": "Provider",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "model",
-   "fieldtype": "Data",
-   "label": "Model",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "response_time",
-   "fieldtype": "Float",
-   "label": "Response Time (s)",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "section_break_usage",
-   "fieldtype": "Section Break",
-   "label": "Usage"
-  },
-  {
-   "fieldname": "prompt_tokens",
-   "fieldtype": "Int",
-   "label": "Prompt Tokens"
-  },
-  {
-   "fieldname": "completion_tokens",
-   "fieldtype": "Int",
-   "label": "Completion Tokens"
-  },
-  {
-   "fieldname": "total_tokens",
-   "fieldtype": "Int",
-   "label": "Total Tokens"
-  },
-  {
-   "fieldname": "section_break_details",
-   "fieldtype": "Section Break",
-   "label": "Details"
-  },
-  {
-   "fieldname": "tool_calls",
-   "fieldtype": "Code",
-   "label": "Tool Calls",
-   "options": "JSON"
-  },
-  {
-   "fieldname": "error_message",
-   "fieldtype": "Text",
-   "label": "Error Message"
-  },
-  {
-   "fieldname": "full_prompt",
-   "fieldtype": "Code",
-   "label": "Full Prompt",
-   "options": "JSON",
-   "read_only": 1
-  },
-  {
-   "fieldname": "full_response",
-   "fieldtype": "Code",
-   "label": "Full Response",
-   "options": "Markdown",
-   "read_only": 1
-  }
- ],
- "issingle": 0,
- "links": [],
- "modified": "2024-01-01 10:00:00.000000",
- "modified_by": "Administrator",
- "module": "OwlAI Core",
- "name": "OwlAI Analytics",
- "naming_rule": "Expression",
- "autoname": "format:OWL-ANA-{YYYY}-{MM}-{DD}-{####}",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2024-01-01 10:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "user",
+        "timestamp",
+        "status",
+        "column_break_1",
+        "provider",
+        "model",
+        "response_time",
+        "section_break_usage",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "section_break_details",
+        "tool_calls",
+        "error_message",
+        "full_prompt",
+        "full_response"
+    ],
+    "fields": [
+        {
+            "fieldname": "user",
+            "fieldtype": "Link",
+            "label": "User",
+            "options": "User",
+            "in_list_view": 1,
+            "reqd": 1
+        },
+        {
+            "fieldname": "timestamp",
+            "fieldtype": "Datetime",
+            "label": "Timestamp",
+            "in_list_view": 1,
+            "reqd": 1
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "label": "Status",
+            "options": "Success\nError",
+            "in_list_view": 1,
+            "reqd": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "provider",
+            "fieldtype": "Link",
+            "label": "Provider",
+            "options": "OwlAI Provider",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "model",
+            "fieldtype": "Link",
+            "label": "Model",
+            "options": "OwlAI Model",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "response_time",
+            "fieldtype": "Float",
+            "label": "Response Time (s)",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "section_break_usage",
+            "fieldtype": "Section Break",
+            "label": "Usage"
+        },
+        {
+            "fieldname": "prompt_tokens",
+            "fieldtype": "Int",
+            "label": "Prompt Tokens"
+        },
+        {
+            "fieldname": "completion_tokens",
+            "fieldtype": "Int",
+            "label": "Completion Tokens"
+        },
+        {
+            "fieldname": "total_tokens",
+            "fieldtype": "Int",
+            "label": "Total Tokens"
+        },
+        {
+            "fieldname": "section_break_details",
+            "fieldtype": "Section Break",
+            "label": "Details"
+        },
+        {
+            "fieldname": "tool_calls",
+            "fieldtype": "Code",
+            "label": "Tool Calls",
+            "options": "JSON"
+        },
+        {
+            "fieldname": "error_message",
+            "fieldtype": "Text",
+            "label": "Error Message"
+        },
+        {
+            "fieldname": "full_prompt",
+            "fieldtype": "Code",
+            "label": "Full Prompt",
+            "options": "JSON",
+            "read_only": 1
+        },
+        {
+            "fieldname": "full_response",
+            "fieldtype": "Code",
+            "label": "Full Response",
+            "options": "Markdown",
+            "read_only": 1
+        }
+    ],
+    "issingle": 0,
+    "links": [],
+    "modified": "2024-01-01 10:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Analytics",
+    "naming_rule": "Expression",
+    "autoname": "format:OWL-ANA-{YYYY}-{MM}-{DD}-{####}",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
 }

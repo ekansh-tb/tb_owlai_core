@@ -15,6 +15,14 @@ def check_ollama_status(url="http://localhost:11434"):
         pass
     return False
 
+def _get_model_name(model_link):
+    """Helper to resolve model name from a Link or raw string."""
+    if not model_link:
+        return ""
+    if frappe.db.exists("OwlAI Model", model_link):
+        return frappe.db.get_value("OwlAI Model", model_link, "model_name")
+    return model_link
+
 def get_active_provider_config():
     """
     Returns the configuration for the active LLM provider.
@@ -29,9 +37,11 @@ def get_active_provider_config():
     # Check Local first if selected
     if settings.provider == "Local (Ollama)":
         if check_ollama_status(settings.ollama_url):
+            model_name = _get_model_name(settings.ollama_model)
             return {
                 "provider": "ollama",
-                "model": f"ollama/{settings.ollama_model}",
+                "model": f"ollama/{model_name}",
+                "model_doc_name": settings.ollama_model, 
                 "api_base": settings.ollama_url,
                 "api_key": "ollama" # Dummy key
             }
@@ -40,9 +50,11 @@ def get_active_provider_config():
             # For "Plug & Play", maybe fallback to Gemini if key exists?
             if settings.gemini_api_key:
                 frappe.log_error("Ollama not reachable, falling back to Gemini")
+                model_name = _get_model_name(settings.gemini_model)
                 return {
                     "provider": "gemini",
-                    "model": f"gemini/{settings.gemini_model}",
+                    "model": f"gemini/{model_name}",
+                    "model_doc_name": settings.gemini_model,
                     "api_key": settings.gemini_api_key
                 }
     
@@ -51,9 +63,12 @@ def get_active_provider_config():
         api_key = settings.get_password("gemini_api_key")
     except Exception:
         api_key = None
+    
+    model_name = _get_model_name(settings.gemini_model) or "gemini-1.5-flash"
 
     return {
         "provider": "gemini",
-        "model": f"gemini/{settings.gemini_model}", # or 'gemini-1.5-flash'}",
+        "model": f"gemini/{model_name}",
+        "model_doc_name": settings.gemini_model,
         "api_key": api_key or frappe.conf.get("GEMINI_API_KEY")
     }

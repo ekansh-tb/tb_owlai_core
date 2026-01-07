@@ -141,6 +141,12 @@
             "label": "Max Reasoning Loops"
         },
         {
+            "fieldname": "default_agent",
+            "fieldtype": "Link",
+            "label": "Default Agent",
+            "options": "OwlAI Agent"
+        },
+        {
             "default": "0.7",
             "fieldname": "response_temperature",
             "fieldtype": "Float",

@@ -50,7 +50,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-06 06:43:43.919897",
+ "modified": "2026-01-06 07:18:30.688050",
  "modified_by": "Administrator",
  "module": "OwlAI Core",
  "name": "OwlAI Tool",
@@ -72,8 +72,10 @@
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "show_name_in_global_search": 1,
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
+ "title_field": "tool_name",
  "track_changes": 1
 }

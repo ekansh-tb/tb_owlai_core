@@ -10,12 +10,26 @@ from tb_owlai_core.utils import get_active_provider_config
 
 
 class OwlAgent:
-    def __init__(self, user: str, context: Dict[str, Any], conversation: Any = None, conversation_name: Optional[str] = None, max_steps: int = 5):
+    def __init__(self, user: str, context: Dict[str, Any], conversation: Any = None, conversation_name: Optional[str] = None, max_steps: int = 5, agent_id: str = None):
         self.user = user
         self.context = context or {}
         self.max_steps = max_steps
         self.registry = ToolRegistry()
-        self.config = get_active_provider_config()
+        self.agent_id = agent_id
+        self.agent_doc = None
+        
+        # Load Agent Document
+        if self.agent_id:
+            if frappe.db.exists("OwlAI Agent", self.agent_id):
+                self.agent_doc = frappe.get_doc("OwlAI Agent", self.agent_id)
+        
+        # Fallback to default agent from settings if not provided
+        if not self.agent_doc:
+            settings = frappe.get_single("OwlAI Settings")
+            if hasattr(settings, "default_agent") and settings.default_agent:
+                self.agent_doc = frappe.get_doc("OwlAI Agent", settings.default_agent)
+
+        self.config = self._resolve_config()
         self.history = []
         self.conversation = conversation
         self.stats = {
@@ -31,6 +45,53 @@ class OwlAgent:
         
         if self.conversation:
             self._load_history()
+
+    def _resolve_config(self) -> Dict[str, Any]:
+        """
+        Resolves the LLM configuration (Model, Provider, API Key).
+        Priority: OwlAI Agent -> OwlAI Settings (Fallback/Legacy)
+        """
+        if self.agent_doc and self.agent_doc.model:
+            try:
+                model_doc = frappe.get_doc("OwlAI Model", self.agent_doc.model)
+                provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
+                
+                # Construct config from new DocTypes
+                config = {
+                    "model": f"{provider_doc.provider_name.lower()}/{model_doc.model_name}", # litellm format assumption
+                    "api_key": provider_doc.get_password("api_key"),
+                    "api_base": provider_doc.api_base,
+                    "provider": provider_doc.provider_name.lower()
+                }
+                
+                # adjustments for specific providers if needed
+                if config["provider"] == "ollama":
+                     config["model"] = f"ollama/{model_doc.model_name}"
+                     if not config["api_base"]:
+                         config["api_base"] = "http://localhost:11434"
+                
+                return config
+            except Exception as e:
+                frappe.log_error(f"Error resolving OwlAI Agent config: {e}")
+        
+        # Fallback to legacy settings-based config
+        return get_active_provider_config()
+
+    def _get_allowed_tools(self) -> List[Dict[str, Any]]:
+        """
+        Returns the list of tool schemas allowed for this agent.
+        """
+        all_tools = self.registry.get_tools_schema()
+        
+        if not self.agent_doc or not self.agent_doc.tools:
+            return all_tools
+            
+        # Filter based on OwlAI Agent Tool table
+        enabled_tool_names = [row.tool for row in self.agent_doc.tools if row.enabled]
+        
+        # Map tool names to schema. Handle potential name mismatch if registry uses class name vs ID.
+        # Currently registry.get_tools_schema returns list of dicts with 'name' key.
+        return [tool for tool in all_tools if tool["name"] in enabled_tool_names]
 
     def _load_history(self):
         """Loads conversation history into LLM format."""
@@ -70,10 +131,15 @@ class OwlAgent:
 
     def get_system_prompt(self) -> str:
         """Constructs the optimized system prompt with Action-First directives."""
-        tools = self.registry.get_tools_schema()
+        tools = self._get_allowed_tools()
         
+        # Base Prompt
+        base_instruction = "You are OwlAI, the Native Intelligence Layer for Frappe/ERPNext."
+        if self.agent_doc and self.agent_doc.system_prompt:
+             base_instruction = self.agent_doc.system_prompt
+
         prompt = [
-            "You are OwlAI, the Native Intelligence Layer for Frappe/ERPNext.",
+            base_instruction,
             f"Acting User: {self.user}",
             f"Current Time: {frappe.utils.now()}",
             f"Current Route: {json.dumps(self.context.get('route'))}",
@@ -88,7 +154,8 @@ class OwlAgent:
             json.dumps(tools, indent=2)
         ]
         
-        # Inject Custom System Prompt Additions from Settings
+        # Inject Custom System Prompt Additions from Settings ONLY if not using custom agent prompt (or append both?)
+        # Let's append Settings additions as global overrides or context.
         settings = frappe.get_single("OwlAI Settings")
         if settings.system_prompt_additions:
             prompt.append("\nADDITIONAL INSTRUCTIONS:")
@@ -182,6 +249,7 @@ class OwlAgent:
                     self.stats["prompt_tokens"] += response.usage.prompt_tokens
                     self.stats["completion_tokens"] += response.usage.completion_tokens
                     self.stats["total_tokens"] += response.usage.total_tokens
+                    # TODO: Save stats to Agent Run doctype if implemented
 
             except Exception as e:
                 return {"reply": f"LLM Connection Error: {str(e)}", "close_chat": False}

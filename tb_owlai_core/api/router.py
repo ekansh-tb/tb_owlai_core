@@ -176,7 +176,7 @@ def log_analytics(user, config, model, response_time, prompt_tokens, completion_
 
 
 @frappe.whitelist()
-def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
+def handle_input_v2(route=None, text=None, conversation_id=None, context=None, mode=None):
     """
     Main chat handler using the new Agent Architecture.
     Accepts:
@@ -184,13 +184,9 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
     - text: User query
     - conversation_id: ID to continue
     - context: JSON string containing frontend context (form_data, selection, etc.)
+    - mode: 'single' (Action) or 'agentic' (Multi-step)
     """
     user = frappe.session.user
-    
-    # 1. Get AI Provider Config
-    config = get_active_provider_config()
-    if not config:
-        return {"reply": "⚠️ AI Assistant is disabled or not configured. Please check 'OwlAI Settings'."}
     
     # 2. Get or create conversation
     conversation = get_or_create_conversation(conversation_id)
@@ -224,10 +220,23 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
     
     # 5. Instantiate and Run Agent
     settings = frappe.get_single("OwlAI Settings")
-    max_steps = settings.max_agent_loops or 5
+    
+    # Determine max_steps based on mode
+    if mode == "single":
+        max_steps = 1
+    elif mode == "agentic":
+        max_steps = settings.max_agent_loops or 5
+        # Ensure we have at least multi-step capability
+        if max_steps < 3: max_steps = 5
+    else:
+        # Default behavior
+        max_steps = settings.max_agent_loops or 5
     
     agent = OwlAgent(user=user, context=agent_context, conversation=conversation, max_steps=max_steps)
     
+    if not agent.config:
+         return {"reply": "⚠️ AI Assistant is disabled or not configured. Please check 'OwlAI Settings' or default Agent."}
+
     start_time = time.time()
     status = "Success"
     error_message = None
@@ -251,8 +260,8 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None):
         try:
              log_analytics(
                 user=user,
-                config=config,
-                model=config.get("model"),
+                config=agent.config, # Use agent's resolved config
+                model=agent.config.get("model"),
                 response_time=duration,
                 prompt_tokens=stats.get("prompt_tokens", 0),
                 completion_tokens=stats.get("completion_tokens", 0),

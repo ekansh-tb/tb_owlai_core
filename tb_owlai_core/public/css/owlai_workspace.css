@@ -1,0 +1,55 @@
+/* Glassmorphism Styles for OwlAI Workspace */
+
+/* Only apply when the body has the owlai-workspace class (injected by JS) */
+body.owlai-workspace {
+    /* Optional: Set a nice gradient background for the whole page if acceptable */
+    /* background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); */
+    --glass-bg: rgba(255, 255, 255, 0.25);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    --glass-blur: blur(8px);
+}
+
+[data-theme="dark"] body.owlai-workspace {
+    --glass-bg: rgba(30, 30, 40, 0.4);
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Target Widgets in the Workspace */
+body.owlai-workspace .widget {
+    background: var(--glass-bg, rgba(255, 255, 255, 0.25));
+    backdrop-filter: var(--glass-blur, blur(8px));
+    -webkit-backdrop-filter: var(--glass-blur, blur(8px));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
+    box-shadow: var(--glass-shadow, 0 8px 32px 0 rgba(31, 38, 135, 0.15));
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+body.owlai-workspace .widget:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Specific Tweak for Card Widgets to ensure text improves */
+body.owlai-workspace .widget .widget-head {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.owlai-workspace .widget-shortcut {
+    background: var(--glass-bg, rgba(255, 255, 255, 0.25));
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-blur);
+}
+
+/* Header Styling */
+
+
+/* OwlAI Badge/Icon styling if we add any custom HTML */
+.owl-badge {
+    font-size: 1.5em;
+    margin-right: 8px;
+    vertical-align: middle;
+}

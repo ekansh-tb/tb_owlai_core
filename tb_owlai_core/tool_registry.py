@@ -9,6 +9,33 @@ class ToolRegistry:
     
     def __init__(self):
         self.plugin_manager = PluginManager()
+        self._sync_tools()
+
+    def _sync_tools(self):
+        """
+        Syncs available tools from PluginManager to 'OwlAI Tool' DocType.
+        Ensures all plugin-discovered tools are registered in the system.
+        """
+        import json
+        available_tools = self.plugin_manager.get_all_tools()
+        
+        for tool in available_tools:
+            if not frappe.db.exists("OwlAI Tool", {"tool_name": tool.name}):
+                try:
+                    tool_doc = frappe.get_doc({
+                        "doctype": "OwlAI Tool",
+                        "tool_name": tool.name,
+                        "type": "Python Method",
+                        "args_schema": json.dumps(tool.inputSchema, indent=2),
+                        "enable_cache": 0,
+                        # We leverage the registry to execute, so method_path might not be strictly needed 
+                        # for the standard execution flow, but we can store the class name or module.
+                        "method_path": f"ToolRegistry.execute('{tool.name}')" 
+                    })
+                    tool_doc.insert(ignore_permissions=True)
+                    frappe.db.commit()
+                except Exception as e:
+                    frappe.logger("owlai").error(f"Failed to sync tool {tool.name}: {str(e)}")
 
     def get_tool(self, tool_name):
         """

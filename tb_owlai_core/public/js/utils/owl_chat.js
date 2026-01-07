@@ -66,6 +66,7 @@ window.OwlChat = class OwlChat {
                                 <div class="owl-search-icon">🦉</div>
                                 <textarea id="owl-input" placeholder="Ask OwlAI..."></textarea>
                                 <div class="owl-input-actions">
+                                    <button id="owl-mode-btn" class="owl-btn-icon" title="Mode: Agentic (Multi-step)">🧠</button>
                                     <button id="owl-mic-btn" class="owl-btn-icon" title="Voice Input">🎤</button>
                                     <button id="owl-send-btn" class="owl-send-btn">➤</button>
                                 </div>
@@ -86,6 +87,7 @@ window.OwlChat = class OwlChat {
         // Add Styles
         this.add_styles();
         this.bind_events();
+        this.mode = 'agentic';
     }
 
     mount_navbar_icon() {
@@ -96,11 +98,11 @@ window.OwlChat = class OwlChat {
         // Standard Frappe v13/14/15 places search in .search-bar or .navbar-center
         // We will try to prepend to .navbar-right to be just to the right of the center block.
         const $navbar_right = $('.navbar .navbar-right .nav.navbar-nav');
-        
+
         if (!$navbar_right.length) {
             // Fallback for different themes/versions
-             setTimeout(() => this.mount_navbar_icon(), 1000);
-             return;
+            setTimeout(() => this.mount_navbar_icon(), 1000);
+            return;
         }
 
         // Icon Button
@@ -479,6 +481,18 @@ window.OwlChat = class OwlChat {
             }
         });
 
+        // Mode Toggle
+        this.$modal.find('#owl-mode-btn').on('click', (e) => {
+            const $btn = $(e.currentTarget);
+            if (this.mode === 'agentic') {
+                this.mode = 'single';
+                $btn.text('⚡').attr('title', 'Mode: Fast Action (Single Step)');
+            } else {
+                this.mode = 'agentic';
+                $btn.text('🧠').attr('title', 'Mode: Agentic (Multi-step)');
+            }
+        });
+
         // Suggestions Input Listener - DISABLED
         // $input.on('input', (e) => this.handle_input_change(e));
         // $input.on('focus', () => { if($input.val().trim()) this.show_suggestions(); });
@@ -738,6 +752,7 @@ window.OwlChat = class OwlChat {
         if (imageFile) formData.append('image', imageFile);
         if (audioBlob) formData.append('audio', audioBlob, 'voice.wav');
         formData.append('route', frappe.get_route_str());
+        formData.append('mode', this.mode || 'agentic');
         formData.append('context', JSON.stringify(context));
 
         if (this.conversation_id) formData.append('conversation_id', this.conversation_id);

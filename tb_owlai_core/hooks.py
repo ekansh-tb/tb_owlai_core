@@ -25,10 +25,12 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/tb_owlai_core/css/tb_owlai_core.css"
+# include js, css files in header of desk.html
+app_include_css = "/assets/tb_owlai_core/css/owlai_workspace.css"
 app_include_js = [
     "/assets/tb_owlai_core/js/utils/owl_chat.js?v=9",
-    "/assets/tb_owlai_core/js/owl_injector.js?v=2"
+    "/assets/tb_owlai_core/js/owl_injector.js?v=2",
+    "/assets/tb_owlai_core/js/utils/owlai_workspace_styler.js"
 ]
 
 # include js, css files in header of web template

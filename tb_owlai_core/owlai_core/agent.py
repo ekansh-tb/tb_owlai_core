@@ -148,7 +148,8 @@ class OwlAgent:
             "1. ACTION: If a user request implies a system action (viewing, creating, searching), use a tool immediately.",
             "2. SMART NAVIGATION: Use the 'Maps' tool for requests like 'Go to Sales Orders' or 'Show me my tasks'.",
             "3. NO HALLUCINATION: If a tool returns a 'LinkValidationError' (record not found), ask the user if they want to create it.",
-            "4. RESPONSE FORMAT: If calling a tool, output ONLY valid JSON in this format: { \"action\": \"ToolName\", \"args\": { <arguments> } }.",
+            "4. RESPONSE FORMAT: If calling a tool, output ONLY the JSON object in this format:",
+            "Example: { \"action\": \"create_document\", \"args\": { \"doctype\": \"Task\", \"data\": { \"subject\": \"Call Customer\", \"status\": \"Open\" } } }",
             "5. NO INNER MONOLOGUE: Do not output thoughts. If you need to use a tool, output ONLY the JSON object. If the task is complete, Close the conversation and Navigate to that route. Unless explicitly other instrcutions given by user.",
             "6. SCHEMA VALIDATION: Before creating a new document, if the field names are not explicitly known from context, use 'get_doctype_info' to fetch the schema. Do not guess field names (e.g., use 'first_name' instead of 'name').",
             "\nAVAILABLE TOOLS:",
@@ -228,101 +229,151 @@ class OwlAgent:
         current_step = 0
         final_text = None
         should_close = False
-
-        while current_step < self.max_steps:
-            current_step += 1
-            
-            try:
-                settings = frappe.get_single("OwlAI Settings")
-                temperature =  settings.response_temperature if settings.response_temperature is not None else 0.7
-
-                response = completion(
-                    model=self.config.get("model"),
-                    messages=messages,
-                    api_key=self.config.get("api_key"),
-                    api_base=self.config.get("api_base"),
-                    temperature=temperature,
-                    stop=["\nObservation:", "Observation:", "User:", "Note:"]
-                )
+        
+        # Initialize Run Log
+        run_doc = None
+        start_time = time.time()
+        
+        try:
+            if self.conversation:
+                run_doc = frappe.get_doc({
+                    "doctype": "OwlAI Run",
+                    "thread": self.conversation.name,
+                    "agent": self.agent_doc.name if self.agent_doc else None,
+                    "status": "Running",
+                    "start_time": frappe.utils.now()
+                })
+                run_doc.insert(ignore_permissions=True)
+                frappe.db.commit()
                 
-                # Track Token Usage
-                if hasattr(response, 'usage'):
-                    self.stats["prompt_tokens"] += response.usage.prompt_tokens
-                    self.stats["completion_tokens"] += response.usage.completion_tokens
-                    self.stats["total_tokens"] += response.usage.total_tokens
-                    # TODO: Save stats to Agent Run doctype if implemented
+        except Exception as e:
+            frappe.logger("owlai").error(f"Failed to create Run Log: {e}")
 
-            except Exception as e:
-                return {"reply": f"LLM Connection Error: {str(e)}", "close_chat": False}
-
-            raw_content = response.choices[0].message.content or ""
-            parsed = self._parse_llm_response(raw_content)
-
-            if parsed["type"] == "tool_call":
-                tool_name = parsed["tool"]
-                tool_args = parsed["args"]
-                self.stats["tool_calls"].append({"tool": tool_name, "args": tool_args})
+        try:
+            while current_step < self.max_steps:
+                current_step += 1
                 
                 try:
-                    self.save_message("assistant", f"Calling {tool_name}...", message_type="action", action_data=parsed)
-                    
-                    # Notify frontend via Realtime API for Toast
-                    frappe.publish_realtime("msgprint", {
-                        "message": f"OwlAI is executing {tool_name}...",
-                        "alert": True,
-                        "indicator": "blue"
-                    }, user=self.user)
+                    settings = frappe.get_single("OwlAI Settings")
+                    temperature =  settings.response_temperature if settings.response_temperature is not None else 0.7
 
-                    # Execute
-                    tool_start = time.time()
-                    result = self.registry.execute(tool_name, tool_args)
-                    tool_duration = time.time() - tool_start
+                    response = completion(
+                        model=self.config.get("model"),
+                        messages=messages,
+                        api_key=self.config.get("api_key"),
+                        api_base=self.config.get("api_base"),
+                        temperature=temperature,
+                        stop=["\nObservation:", "Observation:", "User:", "Note:"]
+                    )
                     
-                    # Update stats with duration
-                    if self.stats["tool_calls"]:
-                        self.stats["tool_calls"][-1]["duration"] = tool_duration
-
-                    # Unwrap tool result if it's from BaseTool (wrapped in success/result/time)
-                    tool_output = result.get("result") if isinstance(result, dict) and "result" in result else result
-
-                    # Handle Client-Side Actions (e.g. Navigation from Maps tool)
-                    if isinstance(tool_output, dict) and tool_output.get("action"):
-                        client_action = tool_output
-                        should_close = True
-                        final_text = tool_output.get("message", "Processing action...")
-                        # If the tool provides a message, let's show that.
-                        break
-                    
-                    # Feed observation back
-                    observation = f"Observation from {tool_name}: {json.dumps(result, default=str)}"
-                    
-                    # Sanitize assistant message in history to ensure clean JSON for future turns
-                    clean_content = json.dumps({"action": tool_name, "args": tool_args})
-                    messages.append({"role": "assistant", "content": clean_content})
-                    
-                    # Ensure observation is valid string
-                    messages.append({"role": "user", "content": str(observation)})
-                    self.save_message("system", observation)
+                    # Track Token Usage
+                    if hasattr(response, 'usage'):
+                        self.stats["prompt_tokens"] += response.usage.prompt_tokens
+                        self.stats["completion_tokens"] += response.usage.completion_tokens
+                        self.stats["total_tokens"] += response.usage.total_tokens
+                        # TODO: Save stats to Agent Run doctype if implemented
 
                 except Exception as e:
-                    error_obs = f"System Error: {str(e)}"
-                    messages.append({"role": "assistant", "content": raw_content})
-                    messages.append({"role": "user", "content": error_obs})
-                    self.save_message("system", error_obs)
-            else:
-                final_text = parsed["content"]
-                self.save_message("assistant", final_text)
-                break
+                    return {"reply": f"LLM Connection Error: {str(e)}", "close_chat": False}
 
-        response_data = {
-            "reply": final_text or "Task processed.",
-            "close_chat": should_close,
-            "stats": self.stats,
-            "messages": messages
-        }
-        
-        # Merge client actions (action, doctype, view, etc.)
-        if client_action:
-            response_data.update(client_action)
+                raw_content = response.choices[0].message.content or ""
+                parsed = self._parse_llm_response(raw_content)
+
+                if parsed["type"] == "tool_call":
+                    tool_name = parsed["tool"]
+                    tool_args = parsed["args"]
+                    self.stats["tool_calls"].append({"tool": tool_name, "args": tool_args})
+                    
+                    try:
+                        self.save_message("assistant", f"Calling {tool_name}...", message_type="action", action_data=parsed)
+                        
+                        # Notify frontend via Realtime API for Toast
+                        frappe.publish_realtime("msgprint", {
+                            "message": f"OwlAI is executing {tool_name}...",
+                            "alert": True,
+                            "indicator": "blue"
+                        }, user=self.user)
+
+                        # Execute
+                        tool_start = time.time()
+                        result = self.registry.execute(tool_name, tool_args)
+                        tool_duration = time.time() - tool_start
+                        
+                        # Update stats with duration
+                        if self.stats["tool_calls"]:
+                            self.stats["tool_calls"][-1]["duration"] = tool_duration
+
+                        # Unwrap tool result if it's from BaseTool (wrapped in success/result/time)
+                        tool_output = result.get("result") if isinstance(result, dict) and "result" in result else result
+
+                        # Handle Client-Side Actions (e.g. Navigation from Maps tool)
+                        if isinstance(tool_output, dict) and tool_output.get("action"):
+                            client_action = tool_output
+                            should_close = True
+                            final_text = tool_output.get("message", "Processing action...")
+                            # If the tool provides a message, let's show that.
+                            break
+                        
+                        # Feed observation back
+                        observation = f"Observation from {tool_name}: {json.dumps(result, default=str)}"
+                        
+                        # Sanitize assistant message in history to ensure clean JSON for future turns
+                        clean_content = json.dumps({"action": tool_name, "args": tool_args})
+                        messages.append({"role": "assistant", "content": clean_content})
+                        
+                        # Ensure observation is valid string
+                        messages.append({"role": "user", "content": str(observation)})
+                        self.save_message("system", observation)
+
+                    except Exception as e:
+                        error_obs = f"System Error: {str(e)}"
+                        messages.append({"role": "assistant", "content": raw_content})
+                        messages.append({"role": "user", "content": error_obs})
+                        self.save_message("system", error_obs)
+                else:
+                    final_text = parsed["content"]
+                    self.save_message("assistant", final_text)
+                    break
+
+            response_data = {
+                "reply": final_text or "Task processed.",
+                "close_chat": should_close,
+                "stats": self.stats,
+                "messages": messages
+            }
             
-        return response_data
+            # Merge client actions (action, doctype, view, etc.)
+            if client_action:
+                response_data.update(client_action)
+
+            # Finalize Run Log
+            if run_doc:
+                try:
+                    run_doc.reload()
+                    run_doc.status = "Completed"
+                    run_doc.end_time = frappe.utils.now()
+                    run_doc.duration = time.time() - start_time
+                    run_doc.total_tokens = self.stats["total_tokens"]
+                    run_doc.prompt_tokens = self.stats["prompt_tokens"]
+                    run_doc.completion_tokens = self.stats["completion_tokens"]
+                    run_doc.save(ignore_permissions=True)
+                    frappe.db.commit()
+                except Exception as e:
+                    frappe.logger("owlai").error(f"Failed to update Run Log: {e}")
+                
+            return response_data
+        
+        except Exception as e:
+            # Catch top-level errors in the loop
+            if run_doc:
+                try:
+                    run_doc.reload()
+                    run_doc.status = "Failed"
+                    run_doc.error_message = str(e)
+                    run_doc.save(ignore_permissions=True)
+                    frappe.db.commit()
+                except: pass
+            
+            # Re-raise or return error reply
+            frappe.log_error(f"Agent Run Error: {e}")
+            return {"reply": f"An error occurred during agent execution: {str(e)}", "close_chat": False}

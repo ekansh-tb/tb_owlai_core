@@ -1,0 +1,130 @@
+{
+    "actions": [],
+    "creation": "2024-01-09 12:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "thread",
+        "status",
+        "agent",
+        "column_break_1",
+        "start_time",
+        "end_time",
+        "section_break_metrics",
+        "total_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+        "column_break_metrics",
+        "cost",
+        "duration",
+        "section_break_debug",
+        "error_message"
+    ],
+    "fields": [
+        {
+            "fieldname": "thread",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Conversation Thread",
+            "options": "OwlAI Conversation",
+            "reqd": 1
+        },
+        {
+            "default": "Queued",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Queued\nRunning\nCompleted\nFailed\nHalted"
+        },
+        {
+            "fieldname": "agent",
+            "fieldtype": "Link",
+            "label": "Agent",
+            "options": "OwlAI Agent"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "start_time",
+            "fieldtype": "Datetime",
+            "label": "Start Time"
+        },
+        {
+            "fieldname": "end_time",
+            "fieldtype": "Datetime",
+            "label": "End Time"
+        },
+        {
+            "fieldname": "section_break_metrics",
+            "fieldtype": "Section Break",
+            "label": "Metrics"
+        },
+        {
+            "fieldname": "total_tokens",
+            "fieldtype": "Int",
+            "label": "Total Tokens"
+        },
+        {
+            "fieldname": "prompt_tokens",
+            "fieldtype": "Int",
+            "label": "Prompt Tokens"
+        },
+        {
+            "fieldname": "completion_tokens",
+            "fieldtype": "Int",
+            "label": "Completion Tokens"
+        },
+        {
+            "fieldname": "column_break_metrics",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "cost",
+            "fieldtype": "Currency",
+            "label": "Estimated Cost"
+        },
+        {
+            "fieldname": "duration",
+            "fieldtype": "Float",
+            "label": "Duration (s)"
+        },
+        {
+            "fieldname": "section_break_debug",
+            "fieldtype": "Section Break",
+            "label": "Debug Info"
+        },
+        {
+            "fieldname": "error_message",
+            "fieldtype": "Small Text",
+            "label": "Error Message"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2024-01-09 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Run",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

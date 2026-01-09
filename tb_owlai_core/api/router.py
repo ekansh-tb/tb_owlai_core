@@ -8,6 +8,7 @@ from tb_owlai_core.utils import get_active_provider_config
 from tb_owlai_core.tool_registry import ToolRegistry
 from tb_owlai_core.owlai_core.agent import OwlAgent
 from tb_owlai_core.utils.context import OwlContext
+from tb_owlai_core.owlai_core.transcriber import transcribe_to_text
 
 # Conversation memory settings are now in OwlAI Settings
 
@@ -250,6 +251,18 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     files = frappe.request.files
     image_file = files.get('image')
     audio_file = files.get('audio')
+    
+    # Process Audio immediately if present
+    if audio_file:
+        transcribed_text = transcribe_to_text(audio_file)
+        if transcribed_text.startswith("Error"):
+             return {"reply": f"⚠️ Audio Transcription Failed: {transcribed_text}"}
+        
+        # Determine if we append or replace
+        if text:
+            text += f"\n(Transcribed Info: {transcribed_text})"
+        else:
+            text = transcribed_text
     
     # Update Title if needed
     _update_conversation_title(conversation, text, image_file, audio_file)

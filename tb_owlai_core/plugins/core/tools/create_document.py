@@ -36,6 +36,46 @@ class CreateDocument(BaseTool):
             valid_fields = {f.fieldname for f in meta.fields}
             valid_fields.update(["name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "doctype", "flags", "_user_tags", "_comments", "_assign", "_liked_by"])
             
+            # --- SMART FIELD MAPPING ---
+            # Create a mapping of Label -> Fieldname to handle cases where the agent uses the UI label
+            # instead of the internal fieldname.
+            field_map = {}
+            for f in meta.fields:
+                if f.label:
+                    field_map[f.label.lower()] = f.fieldname
+                field_map[f.fieldname] = f.fieldname # Ensure direct mapping works too
+            
+            # Map standard fields
+            standard_fields = ["name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "doctype", "flags", "_user_tags", "_comments", "_assign", "_liked_by"]
+            for sf in standard_fields:
+                field_map[sf] = sf
+
+            # Process data and remap keys
+            new_data = {}
+            for key, value in data.items():
+                lower_key = key.lower()
+                clean_key = lower_key.replace("_", " ").strip() # e.g. "date_of_joining" -> "date of joining"
+                
+                # 1. Direct Match
+                if key in valid_fields:
+                    new_data[key] = value
+                    continue
+                
+                # 2. Label Match (Exact or approximate)
+                if lower_key in field_map:
+                    new_data[field_map[lower_key]] = value
+                    continue
+                
+                # 3. Try matching "clean key" against labels (e.g. "First Name" -> "first_name")
+                if clean_key in field_map:
+                    new_data[field_map[clean_key]] = value
+                    continue
+                
+                # 4. If nothing matches, keep original (will trigger validation error below)
+                new_data[key] = value
+
+            data = new_data
+            
             invalid_fields = [k for k in data.keys() if k not in valid_fields and not k.startswith("_")]
             
             if invalid_fields:

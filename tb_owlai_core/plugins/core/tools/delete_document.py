@@ -1,6 +1,11 @@
+from pydantic import BaseModel, Field
 from typing import Any, Dict
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+class DeleteDocumentSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name")
+    name: str = Field(..., description="Document ID/Name")
 
 class DeleteDocument(BaseTool):
     def __init__(self):
@@ -8,14 +13,7 @@ class DeleteDocument(BaseTool):
         self.name = "delete_document"
         self.description = "Delete a document. This action cannot be undone."
         self.category = "Core Operations"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string"},
-                "name": {"type": "string"}
-            },
-            "required": ["doctype", "name"]
-        }
+        self.args_schema = DeleteDocumentSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")

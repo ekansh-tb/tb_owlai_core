@@ -20,12 +20,18 @@ class GetDoctypeInfo(BaseTool):
              return {"error": f"DocType '{doctype}' does not exist."}
 
         try:
+            # Use cached metadata
             meta = frappe.get_meta(doctype)
             
             # Simple Schema Summary
             fields_data = []
+            
+            # Standard Standard Field Types to include in summary
+            # We skip 'Section Break', 'Column Break' etc as they are UI only
+            skip_types = ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold", "Spacer"]
+            
             for df in meta.fields:
-                if not df.hidden:
+                if df.fieldtype not in skip_types and not df.hidden:
                     fields_data.append({
                         "fieldname": df.fieldname,
                         "label": df.label,
@@ -37,6 +43,15 @@ class GetDoctypeInfo(BaseTool):
             # Sort: Mandatory fields first
             fields_data.sort(key=lambda x: x['reqd'], reverse=True)
 
+            # Metadata Info
+            info = {
+                 "title_field": meta.title_field or "name",
+                 "description": meta.description,
+                 "is_submittable": meta.is_submittable,
+                 "istable": meta.istable,
+                 "issingle": meta.issingle
+            }
+
             # Permissions
             permissions = {
                 "read": frappe.has_permission(doctype, "read"),
@@ -47,9 +62,9 @@ class GetDoctypeInfo(BaseTool):
             
             return {
                 "doctype": doctype,
+                "meta": info,
                 "fields": fields_data[:60], # Limit to avoid context overflow, but after sorting mandatory first
-                "permissions": permissions,
-                "is_submittable": meta.is_submittable
+                "permissions": permissions
             }
         except Exception as e:
             return {"error": str(e)}

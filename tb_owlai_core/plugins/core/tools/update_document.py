@@ -1,6 +1,12 @@
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+class UpdateDocumentSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name")
+    name: str = Field(..., description="Document ID/Name")
+    data: Dict[str, Any] = Field(..., description="Fields to update")
 
 class UpdateDocument(BaseTool):
     def __init__(self):
@@ -8,15 +14,7 @@ class UpdateDocument(BaseTool):
         self.name = "update_document"
         self.description = "Update specific fields of an existing document."
         self.category = "Core Operations"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string"},
-                "name": {"type": "string", "description": "Document ID"},
-                "data": {"type": "object", "description": "Fields to update"}
-            },
-            "required": ["doctype", "name", "data"]
-        }
+        self.args_schema = UpdateDocumentSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")

@@ -1,6 +1,15 @@
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+class ListDocumentsSchema(BaseModel):
+    doctype: str = Field(..., description="DocType name")
+    filters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Key-value filters (e.g. {'status': 'Open'})")
+    fields: Optional[List[str]] = Field(default=["name", "modified", "modified_by", "owner"], description="Fields to fetch")
+    limit_start: Optional[int] = Field(0, description="Start index")
+    limit_page_length: Optional[int] = Field(20, description="Number of records to fetch")
+    order_by: Optional[str] = Field("modified desc", description="Order by field")
 
 class ListDocuments(BaseTool):
     def __init__(self):
@@ -8,18 +17,7 @@ class ListDocuments(BaseTool):
         self.name = "list_documents"
         self.description = "List documents of a specific DocType. Supports generic filtering (kwargs)."
         self.category = "Core Operations"
-        self.inputSchema = {
-            "type": "object",
-            "properties": {
-                "doctype": {"type": "string"},
-                "filters": {"type": "object", "description": "Key-value filters (e.g. {'status': 'Open'})"},
-                "fields": {"type": "array", "items": {"type": "string"}, "description": "Fields to fetch"},
-                "limit_start": {"type": "integer", "default": 0},
-                "limit_page_length": {"type": "integer", "default": 20},
-                "order_by": {"type": "string", "default": "modified desc"}
-            },
-            "required": ["doctype"]
-        }
+        self.args_schema = ListDocumentsSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         doctype = arguments.get("doctype")
@@ -43,8 +41,6 @@ class ListDocuments(BaseTool):
                 order_by=order_by
             )
             
-            # Return result formatted for the frontend Chat UI routing
-            # The user requested routing + filters support via kwargs
             return {
                 "doctype": doctype,
                 "data": data,

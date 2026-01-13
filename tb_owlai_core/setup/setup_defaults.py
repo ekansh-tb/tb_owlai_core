@@ -112,6 +112,13 @@ def setup_default_agent(provider_doc_name):
     # 3. Create Default Agent
     if frappe.db.exists("OwlAI Agent", {"agent_name": "OwlAI Assistant"}):
         agent_doc_name = frappe.db.get_value("OwlAI Agent", {"agent_name": "OwlAI Assistant"}, "name")
+        # Force Clean System Prompt if it looks like HTML or is empty
+        doc = frappe.get_doc("OwlAI Agent", agent_doc_name)
+        clean_prompt = "You are OwlAI, the Native Intelligence Layer for Frappe/ERPNext."
+        if "<div" in doc.system_prompt or not doc.system_prompt:
+            doc.system_prompt = clean_prompt
+            doc.save(ignore_permissions=True)
+            print("Fixed OwlAI Assistant System Prompt")
     else:
         # Determine model to link
         # Try to find a model linked to this provider

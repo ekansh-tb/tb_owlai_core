@@ -12,11 +12,11 @@ class BaseTool(ABC):
     """
     args_schema: Optional[Type[BaseModel]] = None
 
-    def __init__(self):
-        self.name = "unnamed_tool"
-        self.description = "No description provided"
+    def __init__(self, name="unnamed_tool", description="No description provided", category="Generic", inputSchema=None):
+        self.name = name
+        self.description = description
         # Default empty schema, will be overridden by args_schema if present
-        self._input_schema = {
+        self._input_schema = inputSchema or {
             "type": "object",
             "properties": {},
             "required": []

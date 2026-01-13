@@ -1,32 +1,23 @@
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
 
+class NavigateSchema(BaseModel):
+    doctype: str = Field(..., description="The DocType to navigate to (e.g. Sales Order, Task, Item).")
+    view: Optional[str] = Field("List", description="The view type (List, Report, Dashboard, Kanban, Tree).", enum=["List", "Report", "Dashboard", "Kanban", "Tree"])
+
 class NavigateTool(BaseTool):
     def __init__(self):
-        super().__init__(
-            name="navigate",
-            description="Navigate the user to a specific DocType list or page in the Frappe Desk. Use this when the user asks to 'Show' or 'Go to' a list or page.",
-            category="Navigation",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "doctype": {
-                        "type": "string",
-                        "description": "The DocType to navigate to (e.g. Sales Order, Task, Item)."
-                    },
-                    "view": {
-                        "type": "string",
-                        "description": "The view type (List, Report, Dashboard, Kanban, Tree). Default is List.",
-                        "enum": ["List", "Report", "Dashboard", "Kanban", "Tree"]
-                    }
-                },
-                "required": ["doctype"]
-            }
-        )
+        super().__init__()
+        self.name = "navigate"
+        self.description = "Navigate the user to a specific DocType list or page in the Frappe Desk. Use this when the user asks to 'Show' or 'Go to' a list or page."
+        self.category = "Navigation"
+        self.args_schema = NavigateSchema
 
-    def execute(self, **kwargs):
-        doctype = kwargs.get('doctype')
-        view = kwargs.get('view', 'List')
+    def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        doctype = arguments.get("doctype")
+        view = arguments.get("view", "List")
         
         # 1. Permission Check
         if not frappe.db.exists("DocType", doctype):

@@ -74,77 +74,9 @@ def save_message(conversation, role, content, message_type="text", action_data=N
     frappe.db.commit()
 
 
-def get_doctype_from_route(route):
-    """
-    Extracts DocType from the current route.
-    Route examples:
-    - /app/todo -> Todo
-    - /app/todo/TASK-001 -> Todo
-    - /app/user-list -> User (via mapping or fuzzy match)
-    """
-    if not route: return None
-    
-    parts = route.strip("/").split("/")
-    
-    if len(parts) >= 2 and parts[0] == "app":
-        doctype_slug = parts[1]
-        if doctype_slug in ["query-report", "dashboard-view", "kanban-view"]:
-             return None # Skip special views for now
-             
-        # Try to find DocType
-        # 1. Direct Name Match
-        if frappe.db.exists("DocType", doctype_slug):
-            return doctype_slug
-            
-        # 2. Slug to Title (todo -> ToDo, system-settings -> System Settings)
-        possible_name = doctype_slug.replace("-", " ").title()
-        if frappe.db.exists("DocType", possible_name):
-             return possible_name
-        
-        # 3. DB Search (case insensitive)
-        try:
-             dt = frappe.db.get_value("DocType", {"name": ["like", doctype_slug]}, "name")
-             if dt: return dt
-        except: pass
-        
-    return None
 
-def get_schema_context(route):
-    doctype = get_doctype_from_route(route)
-    if not doctype:
-        return ""
-        
-    try:
-        meta = frappe.get_meta(doctype)
-        fields = []
-        # Basic Info
-        schema_text = f"DocType: {doctype}\n"
-        schema_text += f"Description: {meta.description or 'No description'}\n"
-        
-        # Fields
-        schema_text += "Fields:\n"
-        for df in meta.fields:
-             if df.fieldtype not in ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold"]:
-                 field_info = f"- {df.fieldname} ({df.fieldtype}): {df.label}"
-                 if df.options:
-                      field_info += f" [Options: {df.options}]"
-                 if df.reqd:
-                      field_info += " [Required]"
-                 fields.append(field_info)
-        
-        schema_text += "\n".join(fields)
-        
-        return f"""
-\n---
-CONTEXT: USER IS CURRENTLY VIEWING DOCTYPE '{doctype}'.
-SCHEMA INFORMATION:
-{schema_text}
----
-"""
-    except Exception as e:
-        # Don't fail the whole request if schema fetch fails
-        print(f"Schema fetch error: {e}")
-        return ""
+
+
 
 def log_analytics(user, config, model, response_time, prompt_tokens, completion_tokens, total_tokens, status, tool_calls, full_prompt, full_response, error_message=None):
     """Log execution metrics to OwlAI Analytics if enabled"""
@@ -277,11 +209,15 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     # If route is passed separately, prefer it or fallback to context
     current_route = route or context_data.get('route')
     
+    # Instantiate OwlContext
+    # This class robustly handles route parsing and data extraction
     agent_context = OwlContext(
         route=current_route,
         form_data=context_data.get('form_data'),
         selected_items=context_data.get('selected_items')
     )
+    
+
     
     # 5. Instantiate and Run Agent
     settings = frappe.get_single("OwlAI Settings")

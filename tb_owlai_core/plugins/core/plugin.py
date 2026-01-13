@@ -47,6 +47,11 @@ class CorePlugin(BasePlugin):
             
             # Navigation
             "maps",
+            "navigate",
+
+            # Utilities
+            "frappe_utils",
+            "context_tools"
         ]
 
     def validate_environment(self):

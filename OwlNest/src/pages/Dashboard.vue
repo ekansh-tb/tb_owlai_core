@@ -1,4 +1,4 @@
-<template>
+                                                            <template>
   <div class="space-y-6">
     <!-- Stats Row -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -42,21 +42,21 @@
              Quick Actions
           </h3>
           <div class="grid grid-cols-2 gap-4">
-             <button class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
+             <button @click="openDeskRoute('Form/Employee/new-employee-1')" class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
                 <UserPlus class="w-6 h-6 text-accent-purple group-hover:text-white transition-colors" />
                 <span class="text-sm font-medium">New Employee</span>
              </button>
-             <button class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
+             <button @click="openDeskRoute('List/OwlAI Analytics')" class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
                 <FileText class="w-6 h-6 text-accent-cyan group-hover:text-white transition-colors" />
-                <span class="text-sm font-medium">Create Report</span>
+                <span class="text-sm font-medium">Analytics & Logs</span>
              </button>
-             <button class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
+             <button @click="router.push('/settings')" class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
                 <Settings class="w-6 h-6 text-gray-400 group-hover:text-white transition-colors" />
                 <span class="text-sm font-medium">Configure Agent</span>
              </button>
-             <button class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
+             <button @click="openDeskRoute('List/OwlAI Knowledge Base')" class="p-4 rounded-xl bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-all text-left flex flex-col gap-3 group border border-transparent hover:border-white/10">
                 <Search class="w-6 h-6 text-gray-400 group-hover:text-white transition-colors" />
-                <span class="text-sm font-medium">Search Base</span>
+                <span class="text-sm font-medium">Search Knowledge</span>
              </button>
           </div>
        </div>
@@ -66,10 +66,18 @@
 
 <script setup>
 import { Activity, Users, FileText, Zap, UserPlus, Search, Settings } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const stats = [
   { label: 'Active Agents', value: '3', icon: Zap, trend: 12 },
   { label: 'Tasks Completed', value: '1,284', icon: FileText, trend: 5 },
   { label: 'Total Users', value: '842', icon: Users, trend: 0 },
 ]
+
+function openDeskRoute(route) {
+    const baseUrl = window.location.origin;
+    window.open(`${baseUrl}/app/${route}`, '_blank');
+}
 </script>

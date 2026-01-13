@@ -10,9 +10,9 @@ from tb_owlai_core.utils import get_active_provider_config
 
 
 class OwlAgent:
-    def __init__(self, user: str, context: Dict[str, Any], conversation: Any = None, conversation_name: Optional[str] = None, max_steps: int = 5, agent_id: str = None):
+    def __init__(self, user: str, context: Optional[Any] = None, conversation: Any = None, conversation_name: Optional[str] = None, max_steps: int = 5, agent_id: str = None):
         self.user = user
-        self.context = context or {}
+        self.context = context
         self.max_steps = max_steps
         self.registry = ToolRegistry()
         self.agent_id = agent_id
@@ -95,25 +95,51 @@ class OwlAgent:
         return [tool for tool in all_tools if tool["name"] in enabled_tool_names]
 
     def _load_history(self):
-        """Loads conversation history into LLM format."""
+        """Loads conversation history into LLM format with token management."""
         if not self.conversation or not self.conversation.messages:
             return
             
-        # Limit to last 10 messages to keep context window clean but provide sufficient history
-        msgs = self.conversation.messages[-10:]
+        # Load all messages first
+        limit = 50 # Load more initially, then trim
+        msgs = self.conversation.messages[-limit:]
+        
+        temp_history = []
         for m in msgs:
-            # Map 'system' role from DB (observations) to 'user' for LLM context, 
-            # or keep valid roles.
             role = m.role
+            # Observations are saved as 'system' but fed as 'user' or 'tool' (if supported)
             if role == "system":
-                 # Observations are saved as 'system' but fed as 'user' in the loop
-                role = "user" 
+                role = "user"
             
-            if role in ["user", "assistant", "system"]:
-                self.history.append({
+            if role in ["user", "assistant", "system"]:  # Simplified roles
+                temp_history.append({
                     "role": role,
                     "content": m.content
                 })
+        
+        # Trim history to fit token limit (heuristic: ~4 chars per token)
+        self.history = self._trim_history(temp_history)
+
+    def _trim_history(self, history: List[Dict[str, str]], max_tokens: int = 6000) -> List[Dict[str, str]]:
+        """
+        Trims message history to approximate token limit.
+        Keeps system prompt implicitly (as it's added later) but trims variable history.
+        Strategies:
+        1. Keep most recent messages.
+        2. Always keep the first User message (optional, but good for context).
+        """
+        current_chars = 0
+        allowed_chars = max_tokens * 4
+        
+        trimmed = []
+        # Reverse iterate to keep most recent
+        for msg in reversed(history):
+            msg_len = len(msg.get("content", ""))
+            if current_chars + msg_len > allowed_chars:
+                break
+            trimmed.insert(0, msg)
+            current_chars += msg_len
+            
+        return trimmed
 
     def save_message(self, role: str, content: str, message_type: str = "text", action_data: Any = None):
         """Persists a message to the OwlAI Conversation child table."""
@@ -143,21 +169,20 @@ class OwlAgent:
             base_instruction,
             f"Acting User: {self.user}",
             f"Current Time: {frappe.utils.now()}",
-            f"Current Route: {json.dumps(self.context.get('route'))}",
+            # Dynamic Context Injection
+            self.context.get_full_context_string() if self.context and hasattr(self.context, "get_full_context_string") else "",
             "\nCORE RULES:",
-            "1. THINK FIRST: Before acting, quickly plan your steps. If the user wants to CREATE or UPDATE a document, Step 1 is ALWAYS `get_doctype_info` to check mandatory fields.",
-            "2. NO GUESSING: Do not hallucinate field names. You MUST know the schema (fieldnames, 'reqd' status) before calling `create_document`.",
-            "3. ACTION: Use tools to interact with the system. Return ONLY the JSON object.",
+            "1. PLAN FIRST: If the user wants to CREATE or UPDATE a document, Step 1 is ALWAYS `get_doctype_info` to check mandatory fields.",
+            "2. NO HALLUCINATION: You MUST know the schema (fieldnames, 'reqd' status) before calling `create_document`.",
+            "3. ACTION-ORIENTED: Use tools to inspect, create, or update data.",
             "4. RESPONSE FORMAT: Brief reasoning text, followed by JSON: \nReasoning...\n```json\n{ \"action\": \"tool_name\", \"args\": { ... } }\n```",
-            "5. REASONING: Explain your thought process briefly before taking action. This helps you be smarter.",
-            "6. CHECK MANDATORY FIELDS: If creating/updating, verify you have all required fields. Use `get_doctype_info` if unsure.",
-            "7. ERROR HANDLING: If a tool fails with 'missing fields', DO NOT apologize. Immediately call `get_doctype_info` for that DocType to correct your mistake.",
+            "5. ERROR RECOVERY: If a tool fails with 'missing fields', immediately call `get_doctype_info`.",
             "\nAVAILABLE TOOLS:",
-            json.dumps(tools, indent=2)
+            json.dumps(tools, indent=2),
+            "\nIMPORTANT: Output ONLY the reasoning and the JSON block."
         ]
         
-        # Inject Custom System Prompt Additions from Settings ONLY if not using custom agent prompt (or append both?)
-        # Let's append Settings additions as global overrides or context.
+        # Inject Custom System Prompt Additions from Settings
         settings = frappe.get_single("OwlAI Settings")
         if settings.system_prompt_additions:
             prompt.append("\nADDITIONAL INSTRUCTIONS:")
@@ -173,31 +198,48 @@ class OwlAgent:
         thought_content = text
 
         # 1. Try extracting from code blocks first
-        if "```json" in text:
+        json_pattern = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
+        match = json_pattern.search(text)
+        
+        if match:
+            json_str = match.group(1)
             try:
-                parts = text.split("```json")
-                thought_content = parts[0].strip() # Capture text before code block
-                block = parts[1].split("```")[0].strip()
-                data = json.loads(block)
+                data = json.loads(json_str)
                 if "action" in data:
                     tool_call = {"tool": data["action"], "args": data.get("args", {})}
-            except (json.JSONDecodeError, IndexError):
-                pass
-
-        # 2. Try finding raw JSON object (brackets) if no code block success
-        if not tool_call:
-            try:
-                start = text.find("{")
-                end = text.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    # Capture text before JSON
-                    thought_content = text[:start].strip()
-                    json_str = text[start:end+1]
-                    data = json.loads(json_str)
-                    if "action" in data:
-                        tool_call = {"tool": data["action"], "args": data.get("args", {})}
+                    thought_content = text.replace(match.group(0), "").strip()
             except json.JSONDecodeError:
                 pass
+
+        # 2. Try finding raw JSON object if no code block success
+        if not tool_call:
+            try:
+                # Find the LAST occurrence of { "action": ... } pattern to avoid false positives in thought
+                # This is a bit risky but standard models output JSON last
+                candidate_jsons = re.findall(r"(\{.*\"action\".*\})", text, re.DOTALL)
+                for json_candidate in reversed(candidate_jsons):
+                    try:
+                        data = json.loads(json_candidate)
+                        if "action" in data:
+                            tool_call = {"tool": data["action"], "args": data.get("args", {})}
+                            thought_content = text.replace(json_candidate, "").strip()
+                            break
+                    except: continue
+            except: pass
+        
+        # 3. Simple cleanup if thought content is empty but logic implies thought
+        if not thought_content and not tool_call:
+             thought_content = text
+
+        if tool_call:
+             return {
+                "type": "tool_call",
+                "tool": tool_call["tool"], 
+                "args": tool_call["args"],
+                "content": thought_content
+             }
+         
+        return {"type": "text", "content": text}
         
         if tool_call:
             return {
@@ -272,6 +314,18 @@ class OwlAgent:
                 try:
                     settings = frappe.get_single("OwlAI Settings")
                     temperature =  settings.response_temperature if settings.response_temperature is not None else 0.7
+                    
+                    # Caching logic
+                    caching = False
+                    cache_params = None
+                    if settings.enable_caching:
+                        caching = True
+                        cache_params = {
+                            "type": "redis",
+                            "host": "localhost",
+                            "port": 6379,
+                            "ttl": settings.cache_ttl or 300
+                        }
 
                     response = completion(
                         model=self.config.get("model"),
@@ -279,6 +333,8 @@ class OwlAgent:
                         api_key=self.config.get("api_key"),
                         api_base=self.config.get("api_base"),
                         temperature=temperature,
+                        caching=caching,
+                        cache_params=cache_params,
                         stop=["\nObservation:", "Observation:", "User:", "Note:"]
                     )
                     

@@ -127,6 +127,9 @@ const chat = createResource({
         if (data.reply) {
              messages.value.push({ role: 'assistant', content: data.reply, message_type: 'text' })
         }
+        if (data.action) {
+            handleAction(data)
+        }
         if (data.conversation_id && !currentConvId.value) {
             currentConvId.value = data.conversation_id
             conversations.reload()
@@ -138,6 +141,30 @@ const chat = createResource({
         messages.value.push({ role: 'assistant', content: "Error: " + (err.messages?.[0] || extractErrorMessage(err)), message_type: 'text' })
     }
 })
+
+function handleAction(data) {
+    if (data.action === 'navigate') {
+        const baseUrl = window.location.origin
+        let targetUrl = `${baseUrl}/app/${frappe.router.slug(data.doctype)}`
+        if (data.name) {
+            targetUrl += `/${data.name}`
+        } else if (data.view) {
+             // Handle views if necessary, though list is default
+             if (data.view.toLowerCase() === 'report') {
+                 targetUrl = `${baseUrl}/app/query-report/${data.doctype}`
+             }
+        }
+        
+        messages.value.push({ 
+            role: 'assistant', 
+            content: `Navigating to [${data.doctype}](${targetUrl})...`, 
+            message_type: 'text' 
+        })
+        
+        // Open in new tab to avoid losing chat context
+        window.open(targetUrl, '_blank')
+    }
+}
 
 function extractErrorMessage(err) {
     // Attempt to parse Frappe error format

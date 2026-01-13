@@ -11,8 +11,8 @@ export default defineConfig({
 			jinjaBootData: true,
 			lucideIcons: true,
 			buildConfig: {
-				outDir: "../<app-name>/public/frontend",
-				indexHtmlPath: "../<app-name>/www/frontend.html",
+				outDir: "../tb_owlai_core/public/owlnest",
+				indexHtmlPath: "../tb_owlai_core/www/owlnest.html",
 				emptyOutDir: true,
 				sourcemap: true,
 			},
@@ -21,7 +21,7 @@ export default defineConfig({
 	],
 	build: {
 		chunkSizeWarningLimit: 1500,
-		outDir: "../<app-name>/public/frontend",
+		outDir: "../tb_owlai_core/public/owlnest",
 		emptyOutDir: true,
 		target: "es2015",
 		sourcemap: true,

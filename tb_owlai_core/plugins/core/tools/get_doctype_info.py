@@ -23,10 +23,10 @@ class GetDoctypeInfo(BaseTool):
             meta = frappe.get_meta(doctype)
             
             # Simple Schema Summary
-            fields = []
+            fields_data = []
             for df in meta.fields:
                 if not df.hidden:
-                    fields.append({
+                    fields_data.append({
                         "fieldname": df.fieldname,
                         "label": df.label,
                         "fieldtype": df.fieldtype,
@@ -34,6 +34,9 @@ class GetDoctypeInfo(BaseTool):
                         "options": df.options
                     })
             
+            # Sort: Mandatory fields first
+            fields_data.sort(key=lambda x: x['reqd'], reverse=True)
+
             # Permissions
             permissions = {
                 "read": frappe.has_permission(doctype, "read"),
@@ -41,10 +44,10 @@ class GetDoctypeInfo(BaseTool):
                 "create": frappe.has_permission(doctype, "create"),
                 "delete": frappe.has_permission(doctype, "delete"),
             }
-
+            
             return {
                 "doctype": doctype,
-                "fields": fields[:60], # Limit to avoid context overflow
+                "fields": fields_data[:60], # Limit to avoid context overflow, but after sorting mandatory first
                 "permissions": permissions,
                 "is_submittable": meta.is_submittable
             }

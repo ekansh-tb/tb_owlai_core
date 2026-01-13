@@ -145,13 +145,13 @@ class OwlAgent:
             f"Current Time: {frappe.utils.now()}",
             f"Current Route: {json.dumps(self.context.get('route'))}",
             "\nCORE RULES:",
-            "1. ACTION: If a user request implies a system action (viewing, creating, searching), use a tool immediately.",
-            "2. SMART NAVIGATION: Use the 'Maps' tool for requests like 'Go to Sales Orders' or 'Show me my tasks'.",
-            "3. NO HALLUCINATION: If a tool returns a 'LinkValidationError' (record not found), ask the user if they want to create it.",
-            "4. RESPONSE FORMAT: If calling a tool, output ONLY the JSON object in this format:",
-            "Example: { \"action\": \"create_document\", \"args\": { \"doctype\": \"Task\", \"data\": { \"subject\": \"Call Customer\", \"status\": \"Open\" } } }",
-            "5. NO INNER MONOLOGUE: Do not output thoughts. If you need to use a tool, output ONLY the JSON object. If the task is complete, Close the conversation and Navigate to that route. Unless explicitly other instrcutions given by user.",
-            "6. SCHEMA VALIDATION: Before creating a new document, if the field names are not explicitly known from context, use 'get_doctype_info' to fetch the schema. Do not guess field names (e.g., use 'first_name' instead of 'name').",
+            "1. THINK FIRST: Before acting, quickly plan your steps. If the user wants to CREATE or UPDATE a document, Step 1 is ALWAYS `get_doctype_info` to check mandatory fields.",
+            "2. NO GUESSING: Do not hallucinate field names. You MUST know the schema (fieldnames, 'reqd' status) before calling `create_document`.",
+            "3. ACTION: Use tools to interact with the system. Return ONLY the JSON object.",
+            "4. RESPONSE FORMAT: Brief reasoning text, followed by JSON: \nReasoning...\n```json\n{ \"action\": \"tool_name\", \"args\": { ... } }\n```",
+            "5. REASONING: Explain your thought process briefly before taking action. This helps you be smarter.",
+            "6. CHECK MANDATORY FIELDS: If creating/updating, verify you have all required fields. Use `get_doctype_info` if unsure.",
+            "7. ERROR HANDLING: If a tool fails with 'missing fields', DO NOT apologize. Immediately call `get_doctype_info` for that DocType to correct your mistake.",
             "\nAVAILABLE TOOLS:",
             json.dumps(tools, indent=2)
         ]
@@ -169,27 +169,43 @@ class OwlAgent:
         """Robustly extracts JSON tool calls from LLM text, handling markdown blocks."""
         if not text: return {"type": "text", "content": ""}
         
+        tool_call = None
+        thought_content = text
+
         # 1. Try extracting from code blocks first
         if "```json" in text:
             try:
-                block = text.split("```json")[1].split("```")[0].strip()
+                parts = text.split("```json")
+                thought_content = parts[0].strip() # Capture text before code block
+                block = parts[1].split("```")[0].strip()
                 data = json.loads(block)
                 if "action" in data:
-                    return {"type": "tool_call", "tool": data["action"], "args": data.get("args", {})}
+                    tool_call = {"tool": data["action"], "args": data.get("args", {})}
             except (json.JSONDecodeError, IndexError):
                 pass
 
-        # 2. Try finding raw JSON object (brackets)
-        try:
-            start = text.find("{")
-            end = text.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                json_str = text[start:end+1]
-                data = json.loads(json_str)
-                if "action" in data:
-                    return {"type": "tool_call", "tool": data["action"], "args": data.get("args", {})}
-        except json.JSONDecodeError:
-            pass
+        # 2. Try finding raw JSON object (brackets) if no code block success
+        if not tool_call:
+            try:
+                start = text.find("{")
+                end = text.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    # Capture text before JSON
+                    thought_content = text[:start].strip()
+                    json_str = text[start:end+1]
+                    data = json.loads(json_str)
+                    if "action" in data:
+                        tool_call = {"tool": data["action"], "args": data.get("args", {})}
+            except json.JSONDecodeError:
+                pass
+        
+        if tool_call:
+            return {
+                "type": "tool_call", 
+                "tool": tool_call["tool"], 
+                "args": tool_call["args"],
+                "content": thought_content # Return the thought/reasoning
+            }
         
         return {"type": "text", "content": text}
 
@@ -282,9 +298,16 @@ class OwlAgent:
                 if parsed["type"] == "tool_call":
                     tool_name = parsed["tool"]
                     tool_args = parsed["args"]
+                    thought_text = parsed.get("content")
+
                     self.stats["tool_calls"].append({"tool": tool_name, "args": tool_args})
                     
                     try:
+                        # Save Reasoning if present
+                        if thought_text:
+                            self.save_message("assistant", thought_text)
+                            messages.append({"role": "assistant", "content": thought_text})
+
                         self.save_message("assistant", f"Calling {tool_name}...", message_type="action", action_data=parsed)
                         
                         # Notify frontend via Realtime API for Toast

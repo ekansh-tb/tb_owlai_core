@@ -1,37 +1,52 @@
-import { userResource } from "@/data/user"
-import { createRouter, createWebHistory } from "vue-router"
-import { session } from "./data/session"
+import { createRouter, createWebHistory } from 'vue-router'
+import { session } from './data/session'
 
 const routes = [
 	{
-		path: "/",
-		name: "Home",
-		component: () => import("@/pages/Home.vue"),
+		path: '/',
+		name: 'Dashboard',
+		component: () => import('./pages/Dashboard.vue'),
+		meta: { requiresAuth: true }
 	},
 	{
-		name: "Login",
-		path: "/account/login",
-		component: () => import("@/pages/Login.vue"),
+		path: '/chat',
+		name: 'Chat',
+		component: () => import('./pages/Chat.vue'),
+		meta: { requiresAuth: true }
 	},
+	{
+		path: '/settings',
+		name: 'Settings',
+		component: () => import('./pages/Settings.vue'),
+		meta: { requiresAuth: true }
+	},
+	{
+		path: '/login',
+		name: 'Login',
+		component: () => import('./pages/Login.vue')
+	}
 ]
 
 const router = createRouter({
-	history: createWebHistory("/frontend"),
-	routes,
+	history: createWebHistory('/owlnest'),
+	routes
 })
 
 router.beforeEach(async (to, from, next) => {
 	let isLoggedIn = session.isLoggedIn
 	try {
-		await userResource.promise
+		if (!isLoggedIn) {
+			await session.login()
+			isLoggedIn = session.isLoggedIn
+		}
 	} catch (error) {
 		isLoggedIn = false
 	}
 
-	if (to.name === "Login" && isLoggedIn) {
-		next({ name: "Home" })
-	} else if (to.name !== "Login" && !isLoggedIn) {
-		next({ name: "Login" })
+	if (to.meta.requiresAuth && !isLoggedIn) {
+		next('/login')
+	} else if (to.name === 'Login' && isLoggedIn) {
+		next('/')
 	} else {
 		next()
 	}

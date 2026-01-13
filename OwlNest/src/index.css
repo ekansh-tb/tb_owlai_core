@@ -1,2 +1,75 @@
 @import "./assets/Inter/inter.css";
-@import "frappe-ui/src/style.css";
+@import "frappe-ui/style.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* HSL Color Palette - Midnight Owl Theme */
+  --bg-primary: 222 47% 11%;
+  /* #0f172a */
+  --bg-secondary: 217 33% 17%;
+  /* #1e293b */
+  --bg-tertiary: 215 28% 22%;
+  /* #2d3748 */
+
+  --accent-primary: 250 100% 64%;
+  /* #6C5DD3 - Vibrant Purple */
+  --accent-secondary: 190 100% 50%;
+  /* #00D2FF - Cyan */
+  --accent-error: 0 84% 60%;
+
+  --text-primary: 0 0% 100%;
+  --text-secondary: 215 20% 65%;
+  --text-muted: 215 16% 47%;
+
+  --glass-border: 217 33% 30%;
+  --glass-bg: 217 33% 17% / 0.7;
+}
+
+body {
+  @apply bg-gray-900 text-white font-sans antialiased overflow-hidden;
+  background-color: hsl(var(--bg-primary));
+  color: hsl(var(--text-primary));
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  @apply backdrop-blur-xl border border-white/10 shadow-2xl;
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.glass-header {
+  @apply backdrop-blur-md border-b border-white/5;
+  background: rgba(15, 23, 42, 0.8);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-600;
+}
+
+/* Animations */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

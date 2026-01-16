@@ -1,111 +1,104 @@
 /**
- * OwlAI Chat - Intelligent Assistant for Frappe
- * Style: Spotlight/Command Bar
+ * OwlAI Chat - Unified Bridge Client
+ * Loads OwlNest (Vue App) in an Iframe and handles Desk-side Actions.
  */
 window.OwlChat = class OwlChat {
     constructor() {
-        this.socket = null;
-        this.conversation_id = null;
-        this.conversations = [];
         this.is_open = false;
+        this.iframe_loaded = false;
 
+        // Wait for Frappe UI
         if (frappe.ui.toolbar) {
-            this.setup_ui();
+            this.setup();
         } else {
-            $(document).on('toolbar_setup', () => this.setup_ui());
+            $(document).on('toolbar_setup', () => this.setup());
         }
     }
 
-    setup_ui() {
-        // Prevent duplicate init
-        if ($('#owl-spotlight-modal').length) return;
-
-        // 1. Add Icon to Navbar (Near Search/Help)
+    setup() {
         this.mount_navbar_icon();
+        this.bind_global_shortcuts();
+        window.addEventListener('message', (e) => this.handle_message(e));
+    }
 
-        // 2. Spotlight Modal (Default Expanded)
-        this.$modal = $(`
-            <div id="owl-spotlight-modal" class="owl-spotlight-overlay hidden">
-                <div class="owl-spotlight-container expanded">
-                    <!-- SIDEBAR (History) -->
-                    <div class="owl-sidebar">
-                        <div class="owl-sidebar-header">
-                            <span class="font-bold">History</span>
-                            <button class="owl-btn-icon owl-sidebar-close">✕</button>
-                        </div>
-                        <div class="owl-history-list">
-                            <div class="text-muted text-center p-3">Loading...</div>
-                        </div>
-                    </div>
+    toggle() {
+        if (!this.iframe_loaded) {
+            this.mount_iframe();
+        }
 
-                    <!-- MAIN CHAT AREA -->
-                    <div class="owl-main-area">
-                        <div class="owl-header">
-                            <div class="owl-header-left">
-                                <span class="owl-logo">🦉</span>
-                                <span class="owl-title">OwlAI</span>
-                                <span class="owl-session-indicator"></span>
-                            </div>
-                            <div class="owl-header-right">
-                                 <button class="owl-btn-icon owl-new-chat" title="New Chat (Cmd+Shift+K)">+</button>
-                                 <button class="owl-btn-icon owl-history" title="History">🕒</button>
-                                 <button class="owl-btn-icon owl-expand-btn" title="Expand/Collapse" style="display:none;">⤢</button>
-                                 <button class="owl-btn-icon owl-close-btn" title="Close">✕</button>
-                            </div>
-                        </div>
-                        
-                        <div class="owl-messages" id="owl-messages">
-                            <div class="message system">
-                                👋 Hi! I'm OwlAI. Ask me anything.
-                            </div>
-                        </div>
-                        
-                        <div class="owl-input-area">
-                            <div class="owl-preview-area hidden" id="owl-preview"></div>
-                            <div class="owl-input-wrapper">
-                                <div class="owl-search-icon">🦉</div>
-                                <textarea id="owl-input" placeholder="Ask OwlAI..."></textarea>
-                                <div class="owl-input-actions">
-                                    <button id="owl-mode-btn" class="owl-btn-icon" title="Mode: Agentic (Multi-step)">🧠</button>
-                                    <button id="owl-mic-btn" class="owl-btn-icon" title="Voice Input">🎤</button>
-                                    <button id="owl-send-btn" class="owl-send-btn">➤</button>
-                                </div>
-                            </div>
-                            <div class="owl-footer-hint hidden">
-                                <span><b>Enter</b> to send</span>
-                                <span><b>Shift+Enter</b> for new line</span>
-                            </div>
-                            
-                            <!-- Suggestions Dropdown (Inactive) -->
-                            <div class="owl-suggestions"></div>
-                        </div>
-                    </div>
-                </div>
+        const $container = $('#owl-iframe-container');
+        this.is_open = !this.is_open;
+
+        if (this.is_open) {
+            $container.removeClass('hidden');
+            // Send updated context whenever opened
+            this.send_context();
+            // Focus iframe logic? (Hard to focus inside iframe from here without postMessage focus request)
+        } else {
+            $container.addClass('hidden');
+        }
+    }
+
+    mount_iframe() {
+        if ($('#owl-iframe-container').length) return;
+
+        // Create Container & Iframe
+        const $container = $(`
+            <div id="owl-iframe-container" class="hidden" style="
+                position: fixed; 
+                top: 0; 
+                left: 0; 
+                width: 100vw; 
+                height: 100vh; 
+                z-index: 10001; 
+                background: rgba(0,0,0,0.5); /* Slight dim for focus */
+                backdrop-filter: blur(2px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            ">
+                <iframe id="owl-iframe" src="/owlnest?mode=embedded" style="
+                    width: 100%; 
+                    height: 100%; 
+                    border: none; 
+                    background: transparent;
+                " allow="microphone; clipboard-read; clipboard-write"></iframe>
+                
+                <!-- Close Button (Outside Iframe) -->
+                <button id="owl-close-overlay" style="
+                    position: absolute;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(0,0,0,0.5);
+                    color: white;
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    cursor: pointer;
+                    z-index: 10002;
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center;
+                ">✕</button>
             </div>
         `).appendTo('body');
 
-        // Add Styles
-        this.add_styles();
-        this.bind_events();
-        this.mode = 'agentic';
+        // Close on clicking outside (if we create a smaller modal, but here we fill screen)
+        // or clicking close button
+        $container.find('#owl-close-overlay').on('click', () => this.toggle());
+
+        this.iframe_loaded = true;
     }
 
     mount_navbar_icon() {
-        // Prevent Duplicate
         if ($('.owl-navbar-icon-li').length) return;
-
-        // Try to place it near the search bar (awesome bar)
-        // Standard Frappe v13/14/15 places search in .search-bar or .navbar-center
-        // We will try to prepend to .navbar-right to be just to the right of the center block.
         const $navbar_right = $('.navbar .navbar-right .nav.navbar-nav');
-
         if (!$navbar_right.length) {
-            // Fallback for different themes/versions
             setTimeout(() => this.mount_navbar_icon(), 1000);
             return;
         }
 
-        // Icon Button
         const $li = $(`
             <li class="nav-item owl-navbar-icon-li" title="Ask OwlAI (Ctrl+K)">
                 <a class="nav-link" href="#" onclick="return false;" style="display: flex; align-items: center; padding: 12px 10px;">
@@ -113,446 +106,63 @@ window.OwlChat = class OwlChat {
                 </a>
             </li>
         `);
-
-        // Prepend to the right-side menu (making it the first item on the right)
         $navbar_right.prepend($li);
+        $li.on('click', (e) => { e.preventDefault(); this.toggle(); });
+    }
 
-        $li.on('click', (e) => {
-            e.preventDefault();
-            this.toggle();
+    bind_global_shortcuts() {
+        // Ctrl+K / Cmd+K
+        frappe.ui.keys.add_shortcut({
+            shortcut: 'ctrl+k',
+            action: () => this.toggle(),
+            description: 'Open OwlAI'
+        });
+        frappe.ui.keys.add_shortcut({
+            shortcut: 'ctrl+space',
+            action: () => this.toggle(),
+            description: 'Open OwlAI'
         });
     }
 
-    add_styles() {
-        // Styles are now loaded via owlai_workspace.css
-    }
+    // === Bridge Communication ===
 
-    bind_events() {
-        // Close on Overlay Click
-        this.$modal.on('click', (e) => {
-            if ($(e.target).is('.owl-spotlight-overlay')) this.toggle();
-        });
-        this.$modal.find('.owl-close-btn').on('click', () => this.toggle());
+    send_context() {
+        if (!this.iframe_loaded) return;
 
-        // Send
-        this.$modal.find('#owl-send-btn').on('click', () => this.send_message());
-        const $input = this.$modal.find('#owl-input');
-        $input.on('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.send_message();
-            }
-        });
+        const iframe = document.getElementById('owl-iframe');
+        if (!iframe) return;
 
-        // Mode Toggle
-        this.$modal.find('#owl-mode-btn').on('click', (e) => {
-            const $btn = $(e.currentTarget);
-            if (this.mode === 'agentic') {
-                this.mode = 'single';
-                $btn.text('⚡').attr('title', 'Mode: Fast Action (Single Step)');
-            } else {
-                this.mode = 'agentic';
-                $btn.text('🧠').attr('title', 'Mode: Agentic (Multi-step)');
-            }
-        });
-
-        // Suggestions Input Listener - DISABLED
-        // $input.on('input', (e) => this.handle_input_change(e));
-        // $input.on('focus', () => { if($input.val().trim()) this.show_suggestions(); });
-
-        // New Chat
-        this.$modal.find('.owl-new-chat').on('click', () => this.start_new_conversation());
-
-        // History Sidebar Toggle
-        this.$modal.find('.owl-history').on('click', () => this.toggle_sidebar());
-        this.$modal.find('.owl-sidebar-close').on('click', () => this.toggle_sidebar(false));
-
-        // Voice
-        this.setup_voice();
-        // Paste
-        this.$modal.find('#owl-input').on('paste', (e) => this.handle_paste(e));
-    }
-
-    toggle_sidebar(forceState) {
-        const $sidebar = this.$modal.find('.owl-sidebar');
-        const currentState = $sidebar.hasClass('expanded');
-        const newState = forceState !== undefined ? forceState : !currentState;
-
-        if (newState) {
-            $sidebar.addClass('expanded');
-            this.show_conversation_history();
-        } else {
-            $sidebar.removeClass('expanded');
-        }
-    }
-
-    toggle() {
-        this.is_open = !this.is_open;
-        if (this.is_open) {
-            // Restore previous session if exists
-            const saved_id = localStorage.getItem('owlai_conversation_id');
-
-            if (this.conversation_id) {
-                // Already active, just refresh history list
-                this.show_conversation_history();
-            } else if (saved_id) {
-                // Restore from storage
-                this.load_conversation(saved_id);
-                this.show_conversation_history();
-            } else {
-                // No history, start new
-                this.start_new_conversation();
-            }
-
-            this.$modal.removeClass('hidden');
-            setTimeout(() => this.$modal.find('#owl-input').focus(), 50);
-
-            // Show sidebar by default on large screens
-            if (window.innerWidth > 768) {
-                this.$modal.find('.owl-sidebar').addClass('expanded');
-                this.show_conversation_history();
-            }
-            this.$modal.find('.owl-spotlight-container').removeClass('compact').addClass('expanded');
-        } else {
-            this.$modal.addClass('hidden');
-        }
-    }
-
-    start_new_conversation() {
-        this.conversation_id = null;
-        localStorage.removeItem('owlai_conversation_id');
-        this.$modal.find('#owl-messages').empty();
-        this.add_message("Starting a new conversation. How can I help?", 'system');
-        this.update_session_indicator();
-        this.$modal.find('.owl-history-item').removeClass('active');
-    }
-
-    update_session_indicator() {
-        const text = this.conversation_id ? `Session: ${this.conversation_id.slice(-5)}` : '';
-        this.$modal.find('.owl-session-indicator').text(text).toggle(!!this.conversation_id);
-    }
-
-    // ... Copy remaining core logic from previous file (load_last_conversation, show_conversation_history, process_request, etc)
-    // But update handle_response for CONFIG
-
-    load_last_conversation() {
-        const saved_id = localStorage.getItem('owlai_conversation_id');
-        if (saved_id) {
-            this.conversation_id = saved_id;
-            this.update_session_indicator();
-        }
-    }
-
-    save_conversation_id(conv_id) {
-        if (conv_id) {
-            this.conversation_id = conv_id;
-            localStorage.setItem('owlai_conversation_id', conv_id);
-            this.update_session_indicator();
-        }
-    }
-
-    show_conversation_history() {
-        // Show loading state if empty
-        const $list = this.$modal.find('.owl-history-list');
-        if ($list.is(':empty')) $list.html('<div class="text-muted small p-2">Loading...</div>');
-
-        frappe.call({
-            method: 'tb_owlai_core.api.router.get_conversations',
-            args: { limit: 20 },
-            callback: (r) => {
-                if (r.message) {
-                    this.render_conversation_list(r.message);
-                }
-            }
-        });
-    }
-
-    render_conversation_list(conversations) {
-        const $list = this.$modal.find('.owl-history-list');
-        $list.empty();
-
-        if (conversations.length === 0) {
-            $list.html('<div class="text-muted small p-2">No history found.</div>');
-            return;
-        }
-
-        // Grouping Logic
-        const today = moment().format('YYYY-MM-DD');
-        const yesterday = moment().subtract(1, 'days').format('YYYY-MM-DD');
-        const last7Days = moment().subtract(7, 'days');
-
-        const groups = {
-            'Today': [],
-            'Yesterday': [],
-            'Previous 7 Days': [],
-            'Older': []
+        // Gather Context
+        const context = {
+            route: frappe.get_route_str(),
+            // Safe doc extraction
+            form_data: (window.cur_frm && window.cur_frm.doc) ? window.cur_frm.doc : null,
+            // Selected list items
+            selected_items: (window.cur_list && window.cur_list.get_checked_items) ? window.cur_list.get_checked_items(true) : []
         };
 
-        conversations.forEach(conv => {
-            const date = conv.modified.split(" ")[0]; // "2024-01-04"
-            if (date === today) groups['Today'].push(conv);
-            else if (date === yesterday) groups['Yesterday'].push(conv);
-            else if (moment(date).isAfter(last7Days)) groups['Previous 7 Days'].push(conv);
-            else groups['Older'].push(conv);
-        });
-
-        // Render Groups
-        Object.keys(groups).forEach(label => {
-            const items = groups[label];
-            if (items.length === 0) return;
-
-            $list.append(`<div class="owl-history-group">${label}</div>`);
-
-            items.forEach(conv => {
-                // Determine Title: Use conv.title, or if missing/empty, use a friendly "New Chat" with small ID
-                let title = conv.title;
-                if (!title || title.trim() === '') {
-                    title = "Conversation " + conv.name.slice(-4);
-                }
-
-                const activeClass = (this.conversation_id === conv.name) ? 'active' : '';
-
-                const $item = $(`
-                    <div class="owl-history-item ${activeClass}" data-id="${conv.name}" title="${title}">
-                        <div class="owl-history-title">${title}</div>
-                    </div>
-                `);
-
-                $item.on('click', () => this.load_conversation(conv.name));
-                $list.append($item);
-            });
-        });
+        iframe.contentWindow.postMessage({
+            action: 'UPDATE_CONTEXT',
+            payload: context
+        }, '*');
     }
 
-    load_conversation(conversation_id) {
-        if (this.conversation_id === conversation_id) return;
+    handle_message(event) {
+        // Security check: ensure origin matches if possible, but same-origin is implied mostly
+        const { action, payload } = event.data;
 
-        this.save_conversation_id(conversation_id);
-        this.$modal.find('.owl-history-item').removeClass('active');
-        this.$modal.find(`.owl-history-item[data-id="${conversation_id}"]`).addClass('active');
-
-        // Load Messages
-        this.$modal.find('#owl-messages').html('<div class="message system">Loading conversation...</div>');
-
-        frappe.call({
-            method: 'tb_owlai_core.api.router.get_conversation_messages',
-            args: { conversation_id: conversation_id },
-            callback: (r) => {
-                this.$modal.find('#owl-messages').empty();
-                if (r.message && r.message.length) {
-                    // Sort by idx (primary) and creation (secondary)
-                    r.message.sort((a, b) => {
-                        // Use idx if available and distinct
-                        if (a.idx !== undefined && b.idx !== undefined && a.idx !== b.idx) {
-                            return a.idx - b.idx;
-                        }
-                        // Fallback to creation time
-                        return (a.creation > b.creation) ? 1 : -1;
-                    });
-
-                    r.message.forEach(msg => {
-                        if (msg.role === 'user') {
-                            this.add_message(frappe.markdown(msg.content), 'user', msg.creation);
-                        } else if (msg.role === 'assistant') {
-                            if (msg.message_type === 'action') {
-                                const text = msg.content || "Executed Action";
-                                this.add_message(frappe.markdown(text), 'assistant', msg.creation);
-                            } else {
-                                this.add_message(frappe.markdown(msg.content), 'assistant', msg.creation);
-                            }
-                        }
-                    });
-                    const $msgs = this.$modal.find('#owl-messages');
-                    $msgs.scrollTop($msgs[0].scrollHeight);
-                } else {
-                    this.add_message("Conversation loaded (empty logs).", 'system');
-                }
-            }
-        });
-    }
-
-    // === Messaging ===
-
-    add_message(html, role, timestamp = null) {
-        const $msgs = this.$modal.find('#owl-messages');
-        const timeStr = timestamp ? frappe.datetime.str_to_user(timestamp).split(" ")[1] : moment().format('HH:mm');
-        const displayTime = timeStr.slice(0, 5); // 14:30
-
-        const msgHtml = `
-            <div class="message ${role}">
-                <div class="message-content">${html}</div>
-                ${role !== 'system' ? `<span class="message-time">${displayTime}</span>` : ''}
-            </div>
-        `;
-
-        $(msgHtml).appendTo($msgs);
-
-        // Auto scroll if needed
-        $msgs.scrollTop($msgs[0].scrollHeight);
-    }
-
-    send_message() {
-        const $input = this.$modal.find('#owl-input');
-        const text = $input.val().trim();
-        if (!text && !this.current_attachment) return;
-
-        if (text) this.add_message(text, 'user');
-        if (this.current_attachment) {
-            const url = URL.createObjectURL(this.current_attachment);
-            this.add_message(`<img src="${url}">`, 'user');
+        if (action === 'EXECUTE_ACTION') {
+            this.handle_action(payload);
+        } else if (action === 'CLOSE_CHAT') {
+            this.toggle();
         }
-
-        this.process_request(text, this.current_attachment);
-        $input.val('');
-        this.current_attachment = null;
-        this.$modal.find('#owl-preview').addClass('hidden').empty();
-    }
-
-    process_request(text, imageFile, audioBlob) {
-        this.add_message('Thinking...', 'assistant loading');
-
-        // Context Gathering
-        let context = {};
-        try {
-            context = {
-                route: frappe.get_route_str(),
-                form_data: (window.cur_frm && window.cur_frm.doc) ? window.cur_frm.doc : {},
-                selected_items: (window.cur_list && window.cur_list.get_checked_items) ? window.cur_list.get_checked_items(true) : []
-            };
-        } catch (e) {
-            console.warn("OwlAI: Failed to gather context", e);
-        }
-
-        const formData = new FormData();
-        if (text) formData.append('text', text);
-        if (imageFile) formData.append('image', imageFile);
-        if (audioBlob) formData.append('audio', audioBlob, 'voice.wav');
-        formData.append('route', frappe.get_route_str());
-        formData.append('mode', this.mode || 'agentic');
-        formData.append('context', JSON.stringify(context));
-
-        if (this.conversation_id) formData.append('conversation_id', this.conversation_id);
-
-        fetch('/api/method/tb_owlai_core.api.router.handle_input_v2', {
-            method: 'POST',
-            headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token },
-            body: formData
-        })
-            .then(r => r.json())
-            .then(res => this.handle_response(res))
-            .catch(err => {
-                this.remove_loading();
-                this.add_message("Error: " + err, 'assistant');
-            });
-    }
-
-    handle_response(res) {
-        this.remove_loading();
-        if (res.exc) { console.error(res.exc); this.add_message("Error occurred.", 'assistant'); return; }
-
-        const data = res.message;
-        if (!data) return;
-
-        if (data.conversation_id) {
-            const is_new = this.conversation_id !== data.conversation_id;
-            this.save_conversation_id(data.conversation_id);
-            if (is_new) this.show_conversation_history();
-        }
-
-        // CONFIG NEEDED?
-        if (data.config_needed) {
-            this.render_config_form(data);
-            return;
-        }
-
-        // TEXT
-        if (data.reply) {
-            this.add_message(frappe.markdown(data.reply), 'assistant');
-        }
-
-        // ACTIONS
-        if (data.action_data) {
-            let actions = [];
-            if (Array.isArray(data.action_data)) {
-                actions = data.action_data;
-            } else if (typeof data.action_data === 'object') {
-                actions = [data.action_data];
-            }
-
-            // Process first action (or loop if needed, but usually oneNav per turn)
-            if (actions.length > 0) {
-                const act = actions[0];
-                const payload = {
-                    action: act.name || act.tool_name, // Handle various formats
-                    ...act.parameters,
-                    ...act.args // Handle various formats
-                };
-
-                // Adapter: navigate filters -> route_options
-                if (payload.action === 'navigate' && payload.filters) {
-                    payload.route_options = payload.filters;
-                }
-
-                this.handle_action(payload);
-            }
-        } else if (data.action) {
-            this.handle_action(data);
-        }
-    }
-
-    render_config_form(data) {
-        const modelOptions = data.models.map(m => `<option value="${m}" ${m.includes(data.current_model) ? 'selected' : ''}>${m}</option>`).join('');
-        const apiKeyField = data.ask_api_key ? `
-            <label>API Key Required</label>
-            <input type="password" class="owl-api-key" placeholder="Enter Gemini API Key">
-        ` : '';
-
-        const html = `
-            <div>
-                <p>${frappe.markdown(data.reply)}</p>
-                <div class="owl-config-form">
-                    <label>Select Model</label>
-                    <select class="owl-model-select">${modelOptions}</select>
-                    ${apiKeyField}
-                    <button class="owl-config-save">Save & Retry</button>
-                </div>
-            </div>
-        `;
-
-        this.add_message(html, 'assistant');
-
-        // Bind Save
-        const $lastMsg = this.$modal.find('.message.assistant').last();
-        $lastMsg.find('.owl-config-save').on('click', () => {
-            const model = $lastMsg.find('.owl-model-select').val();
-            const key = $lastMsg.find('.owl-api-key').val();
-
-            frappe.call({
-                method: 'tb_owlai_core.api.router.update_owlai_settings',
-                args: { model: model, api_key: key },
-                callback: (r) => {
-                    if (r.message && r.message.status === 'success') {
-                        frappe.show_alert('Settings Updated!', 5);
-                        this.add_message("✅ Settings saved. Please try your request again.", 'system');
-                    }
-                }
-            });
-        });
     }
 
     handle_action(data) {
-        if (data.action === 'create_doc') {
-            frappe.model.with_doctype(data.doctype, () => {
-                let doc = frappe.model.get_new_doc(data.doctype);
-                Object.assign(doc, data.data);
-                frappe.set_route('Form', data.doctype, doc.name);
-                this.add_message(`Drafted ${data.doctype}...`, 'assistant');
-                this.toggle(); // Close chat to show user
-            });
-        } else if (data.action === 'navigate') {
-            if (data.route_options) {
-                frappe.route_options = data.route_options;
-            }
+        console.log("OwlAI Bridge Action:", data);
+
+        if (data.action === 'navigate') {
+            if (data.route_options) frappe.route_options = data.route_options;
 
             if (data.name) {
                 frappe.set_route(data.view || 'Form', data.doctype, data.name);
@@ -560,52 +170,27 @@ window.OwlChat = class OwlChat {
                 frappe.set_route(data.view || 'List', data.doctype);
             }
 
-            this.toggle();
-        } else if (data.action === 'reload') {
+            // Optionally close chat?
+            // this.toggle(); 
+        }
+        else if (data.action === 'create_doc') {
+            frappe.model.with_doctype(data.doctype, () => {
+                let doc = frappe.model.get_new_doc(data.doctype);
+                Object.assign(doc, data.data || {});
+                frappe.set_route('Form', data.doctype, doc.name);
+                this.toggle();
+            });
+        }
+        else if (data.action === 'reload') {
             frappe.ui.toolbar.clear_cache();
             frappe.router.reload();
-            this.toggle();
-        } else if (data.action === 'list') {
-            // Render a mini list in the chat
-            let html = `<div class="owl-list-results">`;
-            if (Array.isArray(data.data) && data.data.length > 0) {
-                data.data.forEach(item => {
-                    html += `
-                        <div class="owl-list-item" onclick="frappe.set_route('Form', '${data.doctype}', '${item.name}')">
-                            <div class="font-bold">${item.title || item.name}</div>
-                            <div class="text-muted small">${item.status || ''} · ${frappe.datetime.prettyDate(item.modified)}</div>
-                        </div>
-                    `;
-                });
-            } else {
-                html += `<div class="text-muted">No results found.</div>`;
-            }
-            html += `</div>`;
-
-            // Add style on the fly if needed (or assume it inherits from general styles)
-            this.add_message(html, 'assistant');
         }
     }
 
-    remove_loading() { this.$modal.find('.message.loading').remove(); }
-
-    // Voice & File handlers (simplified)
-    setup_voice() {
-        const $mic = this.$modal.find('#owl-mic-btn');
-        $mic.on('click', () => {
-            frappe.msgprint("Voice integration paused for update. Please type for now!");
-        });
-    }
-
-    handle_paste(e) {
-        const items = (e.originalEvent || e).clipboardData.items;
-        for (let item of items) {
-            if (item.kind === 'file' && item.type.includes('image')) {
-                this.current_attachment = item.getAsFile();
-                const url = URL.createObjectURL(this.current_attachment);
-                this.$modal.find('#owl-preview').removeClass('hidden')
-                    .html(`<img src="${url}" class="owl-preview-img">`);
-            }
-        }
+    // Legacy support for older calls?
+    add_attachment(file) {
+        // TODO: Pass to iframe via PROMPT_WITH_ATTACHMENT action
+        this.toggle();
+        console.warn("Attachment passing to iframe not yet implemented.");
     }
 }

@@ -1,3 +1,4 @@
+
 import frappe
 from werkzeug.wrappers import Response
 import json
@@ -440,7 +441,18 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
         if image_file: title_text = "Image Analysis"
         elif audio_file: title_text = "Voice Command"
     
-    if title_text and (not conversation.title or conversation.title.startswith("Conversation ")):
+    # Valid title update conditions
+    should_update = False
+    if not conversation.title:
+        should_update = True
+    elif conversation.title.startswith("Conversation "):
+        should_update = True
+    elif conversation.title.startswith("Chat OWL-CONV-"): 
+        should_update = True
+    elif conversation.title == "New Conversation":
+        should_update = True
+
+    if title_text and should_update:
         title = title_text[:50] + "..." if len(title_text) > 50 else title_text
         conversation.title = title
         conversation.save(ignore_permissions=True)
@@ -467,10 +479,15 @@ def update_owlai_settings(model=None, api_key=None, enable_analytics=None):
 
 
 @frappe.whitelist()
-def get_conversations(limit=20):
+def get_conversations(limit=20, search_text=None):
     user = frappe.session.user
+    filters = {"status": "Active"}
+    
+    if search_text:
+        filters["title"] = ["like", f"%{search_text}%"]
+
     return frappe.get_all("OwlAI Conversation",
-        filters={"status": "Active"},
+        filters=filters,
         or_filters=[["owner", "=", user], ["sharing_type", "=", "Public"]],
         fields=["name", "title", "modified"],
         order_by="modified desc",
@@ -483,6 +500,24 @@ def new_conversation():
     conv = get_or_create_conversation()
     return {"conversation_id": conv.name}
 
+@frappe.whitelist()
+def delete_conversation(conversation_id):
+    if not conversation_id: return
+    try:
+        frappe.delete_doc("OwlAI Conversation", conversation_id)
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist()
+def update_conversation_title(conversation_id, title):
+    if not conversation_id or not title: return
+    try:
+        frappe.db.set_value("OwlAI Conversation", conversation_id, "title", title)
+        return {"status": "success"}
+    except Exception as e:
+        frappe.log_error(f"Error updating title: {e}")
+        return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()
 def get_conversation_messages(conversation_id):

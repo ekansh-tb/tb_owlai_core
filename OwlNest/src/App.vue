@@ -1,8 +1,11 @@
 <template>
-  <div class="bg-primary min-h-screen text-white font-sans selection:bg-accent-purple selection:text-white">
+  <div :class="[
+      'min-h-screen text-white font-sans selection:bg-accent-purple selection:text-white',
+      isEmbedded ? 'bg-transparent' : 'bg-primary'
+  ]">
     <div v-if="session.isLoggedIn && $route.name !== 'Login'" class="flex h-screen overflow-hidden">
-       <!-- SIDEBAR -->
-       <aside class="w-64 glass-panel m-4 rounded-2xl flex flex-col border border-white/5 relative z-20 transition-all duration-300">
+       <!-- SIDEBAR (Hidden in Embedded Mode) -->
+       <aside v-if="!isEmbedded" class="w-64 glass-panel m-4 rounded-2xl flex flex-col border border-white/5 relative z-20 transition-all duration-300">
           <div class="h-20 flex items-center px-8 border-b border-white/5">
              <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent-purple to-pink-500 mr-3 shadow-lg shadow-accent-purple/20 flex items-center justify-center">
                 <span class="text-xs font-bold text-white">OA</span>
@@ -35,8 +38,8 @@
 
        <!-- MAIN CONTENT -->
        <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
-          <!-- Header -->
-          <header class="h-20 flex items-center justify-between px-8 py-4 shrink-0 transition-opacity duration-300">
+          <!-- Header (Hidden in Embedded Mode) -->
+          <header v-if="!isEmbedded" class="h-20 flex items-center justify-between px-8 py-4 shrink-0 transition-opacity duration-300">
              <h2 class="text-2xl font-bold text-white/90">{{ $route.name }}</h2>
              <div class="flex items-center gap-4">
                 <div class="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-gray-400 font-mono shadow-sm">
@@ -45,7 +48,7 @@
              </div>
           </header>
 
-          <div class="flex-1 overflow-auto p-8 pt-0 custom-scrollbar">
+          <div :class="['flex-1 overflow-auto custom-scrollbar', isEmbedded ? 'p-0' : 'p-8 pt-0']">
              <router-view v-slot="{ Component }">
                 <transition name="fade" mode="out-in">
                    <component :is="Component" />
@@ -70,8 +73,10 @@
 import { session } from './data/session'
 import { LayoutDashboard, MessageSquare, Settings, LogOut } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { bridge } from './utils/bridge'
 
 const router = useRouter()
+const isEmbedded = bridge.isEmbedded
 
 function logout() {
   session.logout.submit()

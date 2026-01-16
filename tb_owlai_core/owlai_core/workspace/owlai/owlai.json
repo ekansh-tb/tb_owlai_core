@@ -1,170 +1,173 @@
 {
-    "charts": [],
-    "content": "[{\"id\": \"owlai_header\", \"type\": \"header\", \"data\": {\"text\": \"🦉 OwlAI Core\", \"level\": 4, \"col\": 12}}, {\"id\": \"owlai_card_core\", \"type\": \"card\", \"data\": {\"card_name\": \"Core\", \"col\": 4}}, {\"id\": \"owlai_card_config\", \"type\": \"card\", \"data\": {\"card_name\": \"Configuration\", \"col\": 4}}, {\"id\": \"owlai_card_logs\", \"type\": \"card\", \"data\": {\"card_name\": \"Logs & Analytics\", \"col\": 4}}]",
-    "creation": "2026-01-06 07:34:46.238148",
-    "custom_blocks": [],
-    "docstatus": 0,
-    "doctype": "Workspace",
-    "hide_custom": 0,
-    "idx": 0,
-    "indicator_color": "green",
-    "is_hidden": 0,
-    "label": "OwlAI",
-    "links": [
-        {
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "Core",
-            "link_count": 0,
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Card Break"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Agent",
-            "link_count": 0,
-            "link_to": "OwlAI Agent",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Tool",
-            "link_count": 0,
-            "link_to": "OwlAI Tool",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "Configuration",
-            "link_count": 0,
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Card Break"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Model",
-            "link_count": 0,
-            "link_to": "OwlAI Model",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Provider",
-            "link_count": 0,
-            "link_to": "OwlAI Provider",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Settings",
-            "link_count": 0,
-            "link_to": "OwlAI Settings",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "Logs & Analytics",
-            "link_count": 0,
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Card Break"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Conversation",
-            "link_count": 0,
-            "link_to": "OwlAI Conversation",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Message",
-            "link_count": 0,
-            "link_to": "OwlAI Message",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        },
-        {
-            "dependencies": "",
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "OwlAI Analytics",
-            "link_count": 0,
-            "link_to": "OwlAI Analytics",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        }
-    ],
-    "modified": "2026-01-06 07:34:46.238148",
-    "modified_by": "Administrator",
-    "module": "OwlAI Core",
-    "name": "OwlAI",
-    "number_cards": [],
-    "owner": "Administrator",
-    "public": 1,
-    "quick_lists": [],
-    "roles": [],
-    "sequence_id": 0.0,
-    "shortcuts": [
-        {
-            "color": "Grey",
-            "doc_view": "List",
-            "icon": "plus",
-            "label": "New Agent",
-            "link_to": "OwlAI Agent",
-            "type": "DocType",
-            "url": "new-owlai-agent"
-        },
-        {
-            "color": "Grey",
-            "doc_view": "List",
-            "icon": "tool",
-            "label": "New Tool",
-            "link_to": "OwlAI Tool",
-            "type": "DocType",
-            "url": "new-owlai-tool"
-        },
-        {
-            "color": "Grey",
-            "doc_view": "List",
-            "icon": "setting",
-            "label": "Settings",
-            "link_to": "OwlAI Settings",
-            "type": "DocType",
-            "url": "owlai-settings"
-        }
-    ],
-    "title": "🦉 OwlAI"
+ "charts": [],
+ "content": "[{\"id\": \"owlai_header\", \"type\": \"header\", \"data\": {\"text\": \"\ud83e\udd89 OwlAI Core\", \"level\": 4, \"col\": 12}}, {\"id\": \"owlai_card_core\", \"type\": \"card\", \"data\": {\"card_name\": \"Core\", \"col\": 4}}, {\"id\": \"owlai_card_config\", \"type\": \"card\", \"data\": {\"card_name\": \"Configuration\", \"col\": 4}}, {\"id\": \"owlai_card_logs\", \"type\": \"card\", \"data\": {\"card_name\": \"Logs & Analytics\", \"col\": 4}}]",
+ "creation": "2026-01-06 07:34:46.238148",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "\ud83e\udd89",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "OwlAI",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Core",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Agent",
+   "link_count": 0,
+   "link_to": "OwlAI Agent",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Tool",
+   "link_count": 0,
+   "link_to": "OwlAI Tool",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Configuration",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Model",
+   "link_count": 0,
+   "link_to": "OwlAI Model",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Provider",
+   "link_count": 0,
+   "link_to": "OwlAI Provider",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Settings",
+   "link_count": 0,
+   "link_to": "OwlAI Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Logs & Analytics",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Conversation",
+   "link_count": 0,
+   "link_to": "OwlAI Conversation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Message",
+   "link_count": 0,
+   "link_to": "OwlAI Message",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OwlAI Analytics",
+   "link_count": 0,
+   "link_to": "OwlAI Analytics",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-01-16 15:26:14.061434",
+ "modified_by": "Administrator",
+ "module": "OwlAI Core",
+ "name": "OwlAI",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "icon": "plus",
+   "label": "New Agent",
+   "link_to": "OwlAI Agent",
+   "type": "DocType",
+   "url": "new-owlai-agent"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "icon": "tool",
+   "label": "New Tool",
+   "link_to": "OwlAI Tool",
+   "type": "DocType",
+   "url": "new-owlai-tool"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "icon": "setting",
+   "label": "Settings",
+   "link_to": "OwlAI Settings",
+   "type": "DocType",
+   "url": "owlai-settings"
+  }
+ ],
+ "title": "OwlAI"
 }

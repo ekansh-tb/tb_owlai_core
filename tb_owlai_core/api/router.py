@@ -445,9 +445,11 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
     should_update = False
     if not conversation.title:
         should_update = True
+    elif conversation.title == conversation.name: # Title equals ID
+        should_update = True
     elif conversation.title.startswith("Conversation "):
         should_update = True
-    elif conversation.title.startswith("Chat OWL-CONV-"): 
+    elif "OWL-CONV-" in conversation.title: # Catches "Chat OWL-CONV-..." or raw ID
         should_update = True
     elif conversation.title == "New Conversation":
         should_update = True
@@ -544,3 +546,18 @@ def get_conversation_messages(conversation_id):
         return messages
     except:
         return []
+
+@frappe.whitelist()
+def get_conversation_info(conversation_id):
+    if not conversation_id: return None
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+        if not conv.has_permission("read"): return None
+        return {
+            "name": conv.name,
+            "title": conv.title,
+            "status": conv.status,
+            "modified": conv.modified
+        }
+    except:
+        return None

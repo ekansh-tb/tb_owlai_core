@@ -247,10 +247,37 @@ const historyResource = createResource({
     }
 })
 
+const convInfoResource = createResource({
+    url: 'tb_owlai_core.api.router.get_conversation_info',
+    onSuccess(data) {
+        if(data && data.name) {
+             // Update or add to conversations list
+             if(!conversations.data) conversations.data = []
+             const idx = conversations.data.findIndex(c => c.name === data.name)
+             if(idx >= 0) {
+                 conversations.data[idx] = data
+             } else {
+                 conversations.data.unshift(data)
+             }
+        }
+    }
+})
+
 function loadConversation(id) {
     currentConvId.value = id
     router.replace({ query: { ...route.query, conversation: id } })
     historyResource.reload()
+    
+    // Check if we have the title details, if not fetch them
+    if(conversations.data) {
+        const exists = conversations.data.find(c => c.name === id)
+        if(!exists) {
+            convInfoResource.submit({ conversation_id: id })
+        }
+    } else {
+         // Should assume separate load handles it, but safe to fetch
+         convInfoResource.submit({ conversation_id: id })
+    }
 }
 
 function startNewChat() {

@@ -57,7 +57,7 @@ window.OwlChat = class OwlChat {
                 align-items: center;
                 justify-content: center;
             ">
-                <iframe id="owl-iframe" src="/owlnest?mode=embedded" style="
+                <iframe id="owl-iframe" src="/owlnest/chat?mode=embedded" style="
                     width: 100%; 
                     height: 100%; 
                     border: none; 

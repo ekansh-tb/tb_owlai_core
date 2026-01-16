@@ -1,55 +1,434 @@
-/* Glassmorphism Styles for OwlAI Workspace */
+/* =========================================
+   OwlAI World Class Chat UI
+   Style: Glassmorphism / Modern / Premium
+   ========================================= */
 
-/* Only apply when the body has the owlai-workspace class (injected by JS) */
-body.owlai-workspace {
-    /* Optional: Set a nice gradient background for the whole page if acceptable */
-    /* background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); */
-    --glass-bg: rgba(255, 255, 255, 0.25);
-    --glass-border: rgba(255, 255, 255, 0.3);
-    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-    --glass-blur: blur(8px);
+:root {
+    /* Neural/Blue Palette */
+    --owl-primary: #6366f1;
+    --owl-primary-hover: #4f46e5;
+    --owl-primary-glow: rgba(99, 102, 241, 0.4);
+
+    /* Glassmorphism Variables */
+    --owl-glass-bg: rgba(255, 255, 255, 0.75);
+    --owl-glass-border: rgba(255, 255, 255, 0.6);
+    --owl-glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+    --owl-glass-blur: blur(20px) saturate(180%);
+
+    /* Text & Layout */
+    --owl-text: #1e293b;
+    --owl-text-muted: #64748b;
+    --owl-font: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --owl-radius-lg: 24px;
+    --owl-radius-md: 16px;
+    --owl-radius-sm: 12px;
+
+    /* Sidebar */
+    --owl-sidebar-bg: rgba(248, 250, 252, 0.6);
+    --owl-sidebar-hover: rgba(255, 255, 255, 0.8);
+
+    /* Messages */
+    --owl-user-bg: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    --owl-user-text: #ffffff;
+    --owl-assistant-bg: rgba(255, 255, 255, 0.5);
+    --owl-assistant-border: rgba(255, 255, 255, 0.8);
+
+    --owl-transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-[data-theme="dark"] body.owlai-workspace {
-    --glass-bg: rgba(30, 30, 40, 0.4);
-    --glass-border: rgba(255, 255, 255, 0.05);
-    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+[data-theme="dark"] {
+    --owl-glass-bg: rgba(15, 23, 42, 0.75);
+    --owl-glass-border: rgba(255, 255, 255, 0.08);
+    --owl-glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+
+    --owl-text: #f1f5f9;
+    --owl-text-muted: #94a3b8;
+
+    --owl-sidebar-bg: rgba(15, 23, 42, 0.4);
+    --owl-sidebar-hover: rgba(255, 255, 255, 0.05);
+
+    --owl-assistant-bg: rgba(30, 41, 59, 0.6);
+    --owl-assistant-border: rgba(255, 255, 255, 0.05);
 }
 
-/* Target Widgets in the Workspace */
-body.owlai-workspace .widget {
-    background: var(--glass-bg, rgba(255, 255, 255, 0.25));
-    backdrop-filter: var(--glass-blur, blur(8px));
-    -webkit-backdrop-filter: var(--glass-blur, blur(8px));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
-    box-shadow: var(--glass-shadow, 0 8px 32px 0 rgba(31, 38, 135, 0.15));
+/* Import Font (optional, handled by system usually but nice to have) */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* --- Overlay --- */
+.owl-spotlight-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.2);
+    /* Light dim */
+    backdrop-filter: blur(8px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.owl-spotlight-overlay:not(.hidden) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* --- Main Container (Glass Card) --- */
+.owl-spotlight-container {
+    width: 1080px;
+    max-width: 95vw;
+    height: 800px;
+    max-height: 90vh;
+    background: var(--owl-glass-bg);
+    border: 1px solid var(--owl-glass-border);
+    backdrop-filter: var(--owl-glass-blur);
+    -webkit-backdrop-filter: var(--owl-glass-blur);
+    box-shadow: var(--owl-glass-shadow), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    border-radius: var(--owl-radius-lg);
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    transform: scale(0.95) translateY(20px);
+    transition: var(--owl-transition);
+    font-family: var(--owl-font);
+    color: var(--owl-text);
+}
+
+.owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
+    transform: scale(1) translateY(0);
+}
+
+/* --- Sidebar --- */
+.owl-sidebar {
+    width: 0;
+    background: var(--owl-sidebar-bg);
+    border-right: 1px solid var(--owl-glass-border);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.4s cubic-bezier(0.2, 0, 0, 1);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.owl-sidebar.expanded {
+    width: 300px;
+}
+
+.owl-sidebar-header {
+    padding: 24px;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--owl-text);
+    border-bottom: 1px solid var(--owl-glass-border);
+}
+
+.owl-history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.owl-history-group {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--owl-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 24px 12px 10px 12px;
+}
+
+.owl-history-item {
+    padding: 12px 16px;
+    margin-bottom: 6px;
+    border-radius: var(--owl-radius-sm);
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--owl-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    font-weight: 500;
+}
+
+.owl-history-item:hover {
+    background: var(--owl-sidebar-hover);
+    transform: translateX(4px);
+}
+
+.owl-history-item.active {
+    background: var(--owl-glass-bg);
+    border-color: var(--owl-glass-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    color: var(--owl-primary);
+    font-weight: 600;
+}
+
+/* --- Main Area --- */
+.owl-main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: transparent;
+    /* inherits glass */
+    position: relative;
+}
+
+/* Header */
+.owl-header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--owl-glass-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.owl-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+}
+
+.owl-logo {
+    font-size: 28px;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+.owl-session-indicator {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 20px;
+    color: var(--owl-text-muted);
+}
+
+.owl-btn-icon {
+    width: 40px;
+    height: 40px;
     border-radius: 12px;
-    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--owl-text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--owl-transition);
 }
 
-body.owlai-workspace .widget:hover {
+.owl-btn-icon:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--owl-text);
+    border-color: var(--owl-glass-border);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Messages */
+.owl-messages {
+    flex: 1;
+    padding: 32px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    scroll-behavior: smooth;
+}
+
+.message {
+    max-width: 80%;
+    padding: 16px 24px;
+    border-radius: var(--owl-radius-md);
+    font-size: 15px;
+    line-height: 1.6;
+    position: relative;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+    animation: owl-fadeInUp 0.4s ease-out forwards;
+}
+
+@keyframes owl-fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message.user {
+    align-self: flex-end;
+    background: var(--owl-user-bg);
+    color: var(--owl-user-text);
+    border-bottom-right-radius: 4px;
+    box-shadow: 0 8px 20px -6px var(--owl-primary-glow);
+}
+
+.message.assistant {
+    align-self: flex-start;
+    background: var(--owl-assistant-bg);
+    border: 1px solid var(--owl-assistant-border);
+    backdrop-filter: blur(5px);
+    border-bottom-left-radius: 4px;
+}
+
+.message.system {
+    align-self: center;
+    background: rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(5px);
+    border-radius: 50px;
+    padding: 8px 24px;
+    font-size: 13px;
+    color: var(--owl-text-muted);
+    border: none;
+    box-shadow: none;
+}
+
+/* Markdown Content */
+.message-content h1,
+.message-content h2 {
+    margin-top: 0.8em;
+    margin-bottom: 0.4em;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.message-content code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9em;
+}
+
+.message-content pre {
+    background: rgba(15, 23, 42, 0.9);
+    color: #f8fafc;
+    padding: 16px;
+    border-radius: var(--owl-radius-sm);
+    margin: 12px 0;
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Input Area */
+.owl-input-area {
+    padding: 24px 32px;
+    border-top: 1px solid var(--owl-glass-border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.owl-input-wrapper {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--owl-glass-border);
+    backdrop-filter: blur(10px);
+    border-radius: var(--owl-radius-md);
+    padding: 16px 20px;
+    display: flex;
+    align-items: flex-end;
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05);
+    transition: var(--owl-transition);
+}
+
+[data-theme="dark"] .owl-input-wrapper {
+    background: rgba(30, 41, 59, 0.6);
+}
+
+.owl-input-wrapper:focus-within {
+    border-color: var(--owl-primary);
+    box-shadow: 0 0 0 4px var(--owl-primary-glow);
+    background: var(--owl-glass-bg);
     transform: translateY(-2px);
-    box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
 }
 
-/* Specific Tweak for Card Widgets to ensure text improves */
-body.owlai-workspace .widget .widget-head {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+.owl-search-icon {
+    font-size: 24px;
+    margin-right: 16px;
+    opacity: 0.8;
+    margin-bottom: 2px;
 }
 
-body.owlai-workspace .widget-shortcut {
-    background: var(--glass-bg, rgba(255, 255, 255, 0.25));
-    border: 1px solid var(--glass-border);
-    backdrop-filter: var(--glass-blur);
+#owl-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--owl-text);
+    resize: none;
+    max-height: 200px;
+    padding: 4px 0;
+    font-family: var(--owl-font);
 }
 
-/* Header Styling */
+#owl-input::placeholder {
+    color: var(--owl-text-muted);
+    opacity: 0.6;
+}
 
+.owl-input-actions {
+    margin-left: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 
-/* OwlAI Badge/Icon styling if we add any custom HTML */
-.owl-badge {
-    font-size: 1.5em;
-    margin-right: 8px;
-    vertical-align: middle;
+.owl-send-btn {
+    width: 44px;
+    height: 44px;
+    background: var(--owl-primary);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    box-shadow: 0 4px 12px var(--owl-primary-glow);
+    transition: var(--owl-transition);
+}
+
+.owl-send-btn:hover {
+    transform: scale(1.05) rotate(-10deg);
+    box-shadow: 0 8px 20px var(--owl-primary-glow);
+}
+
+.owl-send-btn:active {
+    transform: scale(0.95);
+}
+
+/* --- Scrollbar --- */
+.owl-messages::-webkit-scrollbar,
+.owl-history-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.owl-messages::-webkit-scrollbar-thumb,
+.owl-history-list::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+}
+
+[data-theme="dark"] .owl-messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
 }

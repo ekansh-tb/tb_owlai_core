@@ -124,344 +124,7 @@ window.OwlChat = class OwlChat {
     }
 
     add_styles() {
-        const css = `
-            :root {
-                --owl-bg: var(--card-bg, #ffffff);
-                --owl-sidebar-bg: var(--control-bg, #f8fafc);
-                --owl-border: var(--border-color, #e2e8f0);
-                --owl-text: var(--text-color, #1e293b);
-                --owl-text-muted: var(--text-muted, #64748b);
-                --owl-hover: var(--fg-hover-color, #f1f5f9);
-                --owl-primary: var(--primary-color, #6366f1);
-                --owl-primary-fg: #ffffff;
-                --owl-user-msg-bg: var(--owl-primary);
-                --owl-user-msg-text: #ffffff;
-                --owl-assistant-msg-bg: var(--control-bg, #eff6ff);
-                --owl-assistant-msg-text: var(--text-color, #1e293b);
-                --owl-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-                --owl-font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                --owl-radius: 16px;
-                --owl-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            }
-            [data-theme="dark"] {
-                --owl-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
-                --owl-assistant-msg-bg: var(--control-bg, #1e293b);
-            }
-
-            /* Global Reset for Owl Modal */
-            .owl-spotlight-container *, .owl-spotlight-container *::before, .owl-spotlight-container *::after {
-                box-sizing: border-box;
-            }
-
-            /* Overlay */
-            .owl-spotlight-overlay {
-                position: fixed;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0, 0, 0, 0.3);
-                backdrop-filter: blur(4px);
-                z-index: 10001;
-                display: flex;
-                align-items: center; 
-                justify-content: center;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.2s ease;
-            }
-            .owl-spotlight-overlay:not(.hidden) {
-                opacity: 1;
-                pointer-events: auto;
-            }
-
-            /* Container */
-            .owl-spotlight-container {
-                width: 960px;
-                max-width: 95vw;
-                height: 750px;
-                max-height: 90vh;
-                background: var(--owl-bg);
-                border-radius: var(--owl-radius);
-                box-shadow: var(--owl-shadow);
-                display: flex;
-                flex-direction: row;
-                overflow: hidden;
-                transform: scale(0.98) translateY(10px);
-                transition: transform 0.2s ease, opacity 0.2s ease;
-                border: 1px solid var(--owl-border);
-                color: var(--owl-text);
-                font-family: var(--owl-font);
-            }
-            .owl-spotlight-overlay:not(.hidden) .owl-spotlight-container {
-                transform: scale(1) translateY(0);
-            }
-
-            /* Sidebar */
-            .owl-sidebar {
-                width: 0;
-                background: var(--owl-sidebar-bg);
-                border-right: 1px solid var(--owl-border);
-                display: flex;
-                flex-direction: column;
-                transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                overflow: hidden;
-            }
-            .owl-sidebar.expanded {
-                width: 280px;
-            }
-            .owl-sidebar-header {
-                padding: 18px 20px;
-                font-weight: 700;
-                font-size: 14px;
-                letter-spacing: 0.02em;
-                border-bottom: 1px solid var(--owl-border);
-                display: flex; justify-content: space-between; align-items: center;
-                color: var(--owl-text);
-                background: var(--owl-sidebar-bg);
-            }
-            
-            .owl-history-list {
-                flex: 1;
-                overflow-y: auto;
-                padding: 12px;
-            }
-            /* Custom Scrollbar */
-            .owl-history-list::-webkit-scrollbar, .owl-messages::-webkit-scrollbar {
-                width: 6px;
-            }
-            .owl-history-list::-webkit-scrollbar-thumb, .owl-messages::-webkit-scrollbar-thumb {
-                background: var(--owl-border);
-                border-radius: 3px;
-            }
-
-            .owl-history-group {
-                font-size: 11px;
-                font-weight: 700;
-                color: var(--owl-text-muted);
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                margin: 20px 12px 8px 12px;
-            }
-            
-            .owl-history-item {
-                padding: 10px 14px;
-                margin-bottom: 4px;
-                border-radius: 8px;
-                font-size: 13px;
-                cursor: pointer;
-                color: var(--owl-text);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                transition: var(--owl-transition);
-                border: 1px solid transparent;
-            }
-            .owl-history-item:hover {
-                background: var(--owl-hover);
-                transform: translateX(2px);
-            }
-            .owl-history-item.active {
-                background: var(--owl-bg);
-                border-color: var(--owl-border);
-                font-weight: 600;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-            }
-
-            /* Main Area */
-            .owl-main-area {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                min-width: 0;
-                background: var(--owl-bg);
-            }
-
-            /* Header */
-            .owl-header {
-                padding: 16px 24px;
-                border-bottom: 1px solid var(--owl-border);
-                display: flex; justify-content: space-between; align-items: center;
-                background: rgba(255,255,255,0.05); /* Slight transparency helper */
-            }
-            .owl-header-left { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; color: var(--owl-text); }
-            .owl-logo { font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
-            
-            .owl-header-right { display: flex; align-items: center; gap: 8px; }
-            .owl-btn-icon {
-                background: transparent; border: 1px solid transparent; cursor: pointer; padding: 8px;
-                color: var(--owl-text-muted); transition: var(--owl-transition); border-radius: 8px;
-                display: inline-flex; align-items: center; justify-content: center;
-                height: 34px; width: 34px;
-            }
-            .owl-btn-icon:hover { 
-                background: var(--owl-hover); 
-                color: var(--owl-text); 
-                border-color: var(--owl-border);
-            }
-
-            /* Messages */
-            .owl-messages {
-                flex: 1;
-                padding: 24px;
-                overflow-y: auto;
-                display: flex;
-                flex-direction: column;
-                gap: 24px;
-                scroll-behavior: smooth;
-            }
-
-            .message {
-                max-width: 80%;
-                padding: 14px 18px;
-                border-radius: 18px;
-                font-size: 15px;
-                line-height: 1.6;
-                position: relative;
-                word-wrap: break-word;
-                animation: fadeIn 0.3s ease-out forwards;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-
-            .message.system { 
-                align-self: center; 
-                background: var(--owl-sidebar-bg); 
-                color: var(--owl-text-muted); 
-                font-size: 13px; 
-                padding: 8px 16px;
-                border: 1px solid var(--owl-border);
-                border-radius: 24px;
-                max-width: 90%;
-                text-align: center;
-                box-shadow: none;
-            }
-            .message.user { 
-                align-self: flex-end; 
-                background: var(--owl-user-msg-bg); 
-                color: var(--owl-user-msg-text); 
-                border-bottom-right-radius: 4px; 
-            }
-            /* Assistant Message */
-            .message.assistant { 
-                align-self: flex-start; 
-                background: var(--owl-assistant-msg-bg); 
-                color: var(--owl-assistant-msg-text); 
-                border-bottom-left-radius: 4px;
-                border: 1px solid var(--owl-border);
-            }
-            /* Formatted Content inside Messages */
-            .message-content h1, .message-content h2, .message-content h3 {
-                margin-top: 0.5em; margin-bottom: 0.5em; font-weight: 700;
-            }
-            .message-content p { margin-bottom: 0.5em; }
-            .message-content p:last-child { margin-bottom: 0; }
-            .message-content pre { 
-                background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; margin: 8px 0; overflow-x: auto; 
-            }
-            .message-content code {
-                font-family: 'Fira Code', monospace;
-                font-size: 0.9em;
-            }
-
-            .message-time {
-                font-size: 10px;
-                margin-top: 6px;
-                text-align: right;
-                opacity: 0.6;
-                display: block;
-                font-weight: 500;
-            }
-            
-            /* Input Area */
-            .owl-input-area {
-                padding: 20px 24px;
-                border-top: 1px solid var(--owl-border);
-                background: var(--owl-bg);
-            }
-            .owl-input-wrapper {
-                background: var(--owl-sidebar-bg); /* Contrast */
-                border: 1px solid var(--owl-border);
-                border-radius: 14px;
-                padding: 12px 16px;
-                display: flex;
-                align-items: flex-end;
-                transition: var(--owl-transition);
-                box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
-            }
-            .owl-input-wrapper:focus-within { 
-                border-color: var(--owl-primary); 
-                box-shadow: 0 0 0 3px var(--primary-light, rgba(99, 102, 241, 0.2)); 
-                background: var(--owl-bg);
-            }
-            
-            .owl-search-icon { font-size: 20px; margin-right: 12px; margin-bottom: 4px; opacity: 0.8; }
-
-            #owl-input {
-                flex: 1;
-                border: none;
-                outline: none;
-                resize: none;
-                max-height: 200px;
-                min-height: 24px;
-                font-family: inherit;
-                font-size: 15px;
-                padding: 4px 0;
-                background: transparent;
-                color: var(--owl-text);
-                line-height: 1.5;
-            }
-            #owl-input::placeholder { color: var(--owl-text-muted); opacity: 0.7; }
-
-            .owl-input-actions { display: flex; align-items: center; gap: 8px; margin-left: 12px; padding-bottom: 2px; }
-            .owl-send-btn { 
-                background: var(--owl-primary); color: white; 
-                width: 36px; height: 36px; 
-                border-radius: 10px; border: none; 
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; transition: var(--owl-transition);
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            }
-            .owl-send-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
-            .owl-send-btn:active { transform: translateY(0); }
-            
-            .owl-footer-hint {
-                display: flex; justify-content: flex-end; gap: 16px;
-                font-size: 11px; color: var(--owl-text-muted); margin-top: 10px;
-                font-weight: 500;
-            }
-
-            /* Config Form */
-            .owl-config-form {
-                background: var(--owl-bg);
-                padding: 16px;
-                border-radius: 12px;
-                border: 1px solid var(--owl-border);
-                margin-top: 12px;
-                display: flex; flex-direction: column; gap: 12px;
-                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-            }
-            .owl-config-save {
-                background: var(--owl-primary); color: white; border: none; padding: 10px; border-radius: 8px;
-                cursor: pointer; font-size: 13px; font-weight: 600;
-            }
-
-            /* List Results */
-            .owl-list-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-            .owl-list-item { 
-                background: var(--owl-bg); 
-                border: 1px solid var(--owl-border); 
-                padding: 12px 16px; border-radius: 10px; 
-                cursor: pointer; transition: all 0.2s;
-                color: var(--owl-text);
-            }
-            .owl-list-item:hover { 
-                border-color: var(--owl-primary); 
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
-                transform: translateY(-2px);
-            }
-        `;
-        $('<style>').text(css).appendTo('head');
+        // Styles are now loaded via owlai_workspace.css
     }
 
     bind_events() {
@@ -526,16 +189,29 @@ window.OwlChat = class OwlChat {
     toggle() {
         this.is_open = !this.is_open;
         if (this.is_open) {
-            this.start_new_conversation();
+            // Restore previous session if exists
+            const saved_id = localStorage.getItem('owlai_conversation_id');
+
+            if (this.conversation_id) {
+                // Already active, just refresh history list
+                this.show_conversation_history();
+            } else if (saved_id) {
+                // Restore from storage
+                this.load_conversation(saved_id);
+                this.show_conversation_history();
+            } else {
+                // No history, start new
+                this.start_new_conversation();
+            }
+
             this.$modal.removeClass('hidden');
             setTimeout(() => this.$modal.find('#owl-input').focus(), 50);
 
             // Show sidebar by default on large screens
             if (window.innerWidth > 768) {
-                this.$modal.find('.owl-sidebar').addClass('expanded'); // Ensure sidebar is expanded
+                this.$modal.find('.owl-sidebar').addClass('expanded');
                 this.show_conversation_history();
             }
-            // Ensure expanded class is set
             this.$modal.find('.owl-spotlight-container').removeClass('compact').addClass('expanded');
         } else {
             this.$modal.addClass('hidden');
@@ -795,7 +471,33 @@ window.OwlChat = class OwlChat {
         }
 
         // ACTIONS
-        if (data.action) this.handle_action(data);
+        if (data.action_data) {
+            let actions = [];
+            if (Array.isArray(data.action_data)) {
+                actions = data.action_data;
+            } else if (typeof data.action_data === 'object') {
+                actions = [data.action_data];
+            }
+
+            // Process first action (or loop if needed, but usually oneNav per turn)
+            if (actions.length > 0) {
+                const act = actions[0];
+                const payload = {
+                    action: act.name || act.tool_name, // Handle various formats
+                    ...act.parameters,
+                    ...act.args // Handle various formats
+                };
+
+                // Adapter: navigate filters -> route_options
+                if (payload.action === 'navigate' && payload.filters) {
+                    payload.route_options = payload.filters;
+                }
+
+                this.handle_action(payload);
+            }
+        } else if (data.action) {
+            this.handle_action(data);
+        }
     }
 
     render_config_form(data) {

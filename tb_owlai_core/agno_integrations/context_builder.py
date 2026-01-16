@@ -98,6 +98,7 @@ def get_common_doctypes():
     common = [
         "User", "ToDo", "File", "Customer", "Item", "Employee", 
         "Sales Order", "Purchase Order", "Sales Invoice", "Purchase Invoice",
-        "Quotation", "Supplier", "Company"
+        "Quotation", "Supplier", "Company",
+        "OwlAI Agent", "OwlAI Model", "OwlAI Tool", "OwlAI Provider", "OwlAI Settings"
     ]
     return f"Common DocTypes: {', '.join(common)}"

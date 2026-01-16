@@ -378,6 +378,8 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
                 possible = json.loads(reply)
                 if "name" in possible and "parameters" in possible:
                     action_data = possible
+                    # Clear reply so we don't show raw JSON to user
+                    reply = ""
             except: pass
 
         result = {"reply": reply, "action_data": action_data}

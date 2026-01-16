@@ -59,18 +59,18 @@ def setup_ollama():
         p.insert(ignore_permissions=True)
         provider_doc_name = p.name
     
-    # Model: Llama3
-    # We name it 'llama3' as a safe default for Ollama.
-    existing_model = frappe.db.get_value("OwlAI Model", {"model_name": "llama3", "provider": provider_doc_name}, "name")
+    # Model: Llama3.2:3b
+    # We name it 'llama3.2:3b' to match the installed model
+    existing_model = frappe.db.get_value("OwlAI Model", {"model_name": "llama3.2:3b", "provider": provider_doc_name}, "name")
 
     if not existing_model:
         m = frappe.get_doc({
             "doctype": "OwlAI Model",
-            "model_name": "llama3",
+            "model_name": "llama3.2:3b",
             "provider": provider_doc_name,
-            "context_window": 8192,
+            "context_window": 128000,
             "supports_vision": 0,
-            "supports_function_calling": 0
+            "supports_function_calling": 1
         })
         m.insert(ignore_permissions=True)
         

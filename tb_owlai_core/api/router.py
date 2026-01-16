@@ -1,4 +1,5 @@
 import frappe
+from werkzeug.wrappers import Response
 import json
 import base64
 import time
@@ -160,6 +161,99 @@ def _resolve_model_link(model_identifier):
     return None
 
 
+
+@frappe.whitelist()
+def handle_stream_input(route=None, text=None, conversation_id=None, context=None, mode=None):
+    """
+    Streaming chat handler (SSE).
+    """
+    user = frappe.session.user
+    
+    conversation = get_or_create_conversation(conversation_id)
+    if route and not conversation.context_route:
+        conversation.context_route = route
+        conversation.save(ignore_permissions=True)
+    
+    _update_conversation_title(conversation, text, None, None)
+
+    context_data = {}
+    if context:
+        try:
+             context_data = json.loads(context)
+        except: pass
+    current_route = route or context_data.get('route')
+    
+    from tb_owlai_core.agno_integrations.main import get_agent
+    
+    additional_context = f"""
+    Current Context:
+    - Route: {current_route or 'Unknown'}
+    - Form Data: {json.dumps(context_data.get('form_data') or {})}
+    - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
+    User: {user}
+    """
+    
+    try:
+        agent = get_agent(conversation_id=conversation.name)
+    except Exception as e:
+         return Response(f"data: Error: {str(e)}\\n\\n", mimetype='text/event-stream')
+
+    def generate():
+        full_response_text = ""
+        start_time = time.time()
+        status = "Success"
+        error_message = None
+        tool_calls = [] 
+        
+        try:
+            # Yield Start Event
+            yield f"event: start\\ndata: {json.dumps({'conversation_id': conversation.name})}\\n\\n"
+
+            stream = agent.run(text, additional_context=additional_context, stream=True)
+            
+            for chunk in stream:
+                token = ""
+                # Handle RunResponse chunk
+                if hasattr(chunk, "content") and chunk.content:
+                     token = chunk.content
+                elif isinstance(chunk, str):
+                     token = chunk
+                
+                if token:
+                    payload = json.dumps({"token": token})
+                    yield f"data: {payload}\\n\\n"
+                    full_response_text += token
+                
+        except Exception as e:
+            status = "Error"
+            error_message = str(e)
+            yield f"event: error\\ndata: {str(e)}\\n\\n"
+            frappe.log_error(f"Stream Error: {e}")
+            
+        finally:
+            duration = time.time() - start_time
+            try:
+                log_analytics(
+                    user=user,
+                    config={},
+                    model=agent.model.id if agent else "Unknown",
+                    response_time=duration,
+                    prompt_tokens=0, 
+                    completion_tokens=len(full_response_text)/4,
+                    total_tokens=0,
+                    status=status,
+                    tool_calls=tool_calls,
+                    full_prompt=text,
+                    full_response=full_response_text,
+                    error_message=error_message
+                )
+            except: pass
+            
+            yield "event: end\\ndata: [DONE]\\n\\n"
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
 @frappe.whitelist()
 def handle_input_v2(route=None, text=None, conversation_id=None, context=None, mode=None):
     """
@@ -219,65 +313,119 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     
 
     
-    # 5. Instantiate and Run Agent
-    settings = frappe.get_single("OwlAI Settings")
     
-    # Determine max_steps based on mode
-    if mode == "single":
-        max_steps = 1
-    elif mode == "agentic":
-        max_steps = settings.max_agent_loops or 5
-        # Ensure we have at least multi-step capability
-        if max_steps < 3: max_steps = 5
-    else:
-        # Default behavior
-        max_steps = settings.max_agent_loops or 5
+    # 5. Instantiate and Run Agent (Agno)
+    from tb_owlai_core.agno_integrations.main import get_agent
     
-    agent = OwlAgent(user=user, context=agent_context, conversation=conversation, max_steps=max_steps)
+    # Prepare additional context from OwlContext
+    # We serialize what we know about the current view
+    additional_context = f"""
+    Current Context:
+    - Route: {current_route or 'Unknown'}
+    - Form Data: {json.dumps(context_data.get('form_data') or {})}
+    - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
+    User: {user}
+    """
     
-    if not agent.config:
-         return {"reply": "⚠️ AI Assistant is disabled or not configured. Please check 'OwlAI Settings' or default Agent."}
+    # Agent Configuration
+    # We can pass agent_id if we have one selected in settings, or passed in request
+    # For now, default agent.
+    
+    try:
+        agent = get_agent(
+            conversation_id=conversation.name,
+            # agent_id=settings.default_agent # TODO: Add this to get_agent logic if needed
+        )
+    except Exception as e:
+         frappe.log_error(f"Agent Definition Error: {str(e)}")
+         return {"reply": f"⚠️ Failed to initialize AI Agent: {str(e)}"}
 
     start_time = time.time()
     status = "Success"
     error_message = None
-    result = {}
     
     try:
-        result = agent.run(text, image_file, audio_file)
+        # Run Agno Agent
+        # We pass the user Query (text) and context
+        
+        # Handling images if supported by Agno (TODO: Check Image artifact support in get_agent config)
+        # For now, text only.
+        
+        response = agent.run(
+             text,
+             additional_context=additional_context
+             # images=[image_file] if image_file else None # Agno needs Image object wrapper
+        )
+        
+        # Response is RunOutput
+        reply = response.content
+        
+        # Determine action_data for Frontend
+        action_data = None
+        
+        # 1. Native Tool Calls
+        if response.tools:
+            action_data = []
+            for t in response.tools:
+                action_data.append({
+                    "name": t.tool_name,
+                    "parameters": t.tool_args
+                })
+        
+        # 2. Fallback: Parse JSON from reply
+        if not action_data and reply and reply.strip().startswith("{"):
+            try:
+                possible = json.loads(reply)
+                if "name" in possible and "parameters" in possible:
+                    action_data = possible
+            except: pass
+
+        result = {"reply": reply, "action_data": action_data}
+        
     except Exception as e:
         status = "Error"
         error_message = str(traceback.format_exc())
-        frappe.log_error("OwlAI Agent Error")
+        frappe.log_error("OwlAI Agno Agent Error")
         result = {"reply": f"An error occurred: {str(e)}"}
+        response = None
+        
     finally:
         end_time = time.time()
         duration = end_time - start_time
         
-        stats = result.get("stats", {})
-        messages = result.get("messages", [])
-        
         # Log Analytics
         try:
-             log_analytics(
+            metrics = response.metrics if response and response.metrics else None
+            
+            tool_calls = []
+            # Extract tool calls from response tools list
+            if response and response.tools:
+                 for t in response.tools:
+                     tool_calls.append({
+                         "name": t.tool_name,
+                         "args": t.tool_args,
+                         "result": str(t.result)[:1000] # Truncate result
+                     })
+            
+            log_analytics(
                 user=user,
-                config=agent.config, # Use agent's resolved config
-                model=agent.config.get("model_doc_name") or agent.config.get("model"),
+                config={}, # Agno config not easily accessible as dict, pass empty or reconstruct
+                model=agent.model.id if agent and agent.model else "Unknown",
                 response_time=duration,
-                prompt_tokens=stats.get("prompt_tokens", 0),
-                completion_tokens=stats.get("completion_tokens", 0),
-                total_tokens=stats.get("total_tokens", 0),
+                prompt_tokens=metrics.input_tokens if metrics else 0,
+                completion_tokens=metrics.output_tokens if metrics else 0,
+                total_tokens=metrics.total_tokens if metrics else 0,
                 status=status,
-                tool_calls=stats.get("tool_calls", []),
-                full_prompt=messages if messages else text,
-                full_response=result.get("message", ""),
+                tool_calls=tool_calls,
+                full_prompt=text,
+                full_response=result.get("reply", ""),
                 error_message=error_message
             )
         except Exception as log_e:
-             print(f"Analytics Error: {log_e}")
+             # print(f"Analytics Error: {log_e}")
+             pass
 
-    
-    # result contains {"reply": "..."} coming from agent.run()
+    # result contains {"reply": "..."}
     # Add conversation_id for frontend tracking
     result["conversation_id"] = conversation.name
     

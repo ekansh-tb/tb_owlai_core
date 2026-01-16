@@ -1,0 +1,123 @@
+{
+    "actions": [],
+    "creation": "2024-01-16 12:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "title",
+        "source_type",
+        "section_break_znwd",
+        "file",
+        "url",
+        "section_break_content",
+        "content",
+        "column_break_meta",
+        "status",
+        "chunk_count",
+        "error",
+        "vector_id"
+    ],
+    "fields": [
+        {
+            "fieldname": "title",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Title",
+            "reqd": 1
+        },
+        {
+            "default": "Text",
+            "fieldname": "source_type",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Source Type",
+            "options": "Text\nFile\nURL",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_znwd",
+            "fieldtype": "Section Break"
+        },
+        {
+            "depends_on": "eval:doc.source_type=='File'",
+            "fieldname": "file",
+            "fieldtype": "Attach",
+            "label": "File"
+        },
+        {
+            "depends_on": "eval:doc.source_type=='URL'",
+            "fieldname": "url",
+            "fieldtype": "Data",
+            "label": "URL"
+        },
+        {
+            "fieldname": "section_break_content",
+            "fieldtype": "Section Break",
+            "label": "Content"
+        },
+        {
+            "description": "Extracted text or raw content to be indexed.",
+            "fieldname": "content",
+            "fieldtype": "Text Editor",
+            "label": "Content"
+        },
+        {
+            "fieldname": "column_break_meta",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "Pending",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Pending\nIndexing\nIndexed\nFailed",
+            "read_only": 1
+        },
+        {
+            "fieldname": "chunk_count",
+            "fieldtype": "Int",
+            "label": "Chunk Count",
+            "read_only": 1
+        },
+        {
+            "fieldname": "error",
+            "fieldtype": "Small Text",
+            "label": "Error",
+            "read_only": 1
+        },
+        {
+            "fieldname": "vector_id",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Vector ID",
+            "read_only": 1
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2024-01-16 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Knowledge Base",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

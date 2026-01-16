@@ -54,6 +54,7 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
         "Example: 'Show me pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'})",
         "Example: 'Open Todo list' -> navigate(doctype='Todo')",
         "If the user request is ambiguous (e.g. 'Show orders' without specifying Sales or Purchase), ASK A CLARIFYING QUESTION.",
+        "Use `search_knowledge_base` if the user asks about policies, manuals, or general company information that might be stored in files.",
     ]
     
     # Inject Dynamic Context

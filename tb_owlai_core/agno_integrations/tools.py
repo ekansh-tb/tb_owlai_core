@@ -25,6 +25,7 @@ class FrappeToolkit(Toolkit):
             "delete_document": self.delete_document,
             "navigate": self.navigate,
             "search_documents": self.search_documents,
+            "search_knowledge_base": self.search_knowledge_base,
             "frappe_utils": self.frappe_utils
         }
         
@@ -167,16 +168,20 @@ class FrappeToolkit(Toolkit):
 
     def search_documents(self, query: str, doctype: Optional[str] = None) -> list:
         """
-        Global search or search within a specific DocType.
-
-        Args:
-            query (str): The search term.
-            doctype (str): Optional DocType to restrict search.
-
-        Returns:
-            list: Search results.
+        Global search or search within a specific DocType (Database Search).
         """
         return self._exec("search_documents", query=query, doctype=doctype)
+    
+    def search_knowledge_base(self, query: str) -> list:
+        """
+        Search the OwlAI Knowledge Base (Vector Store) for documents, policies, or internal wikis.
+        Use this when the user asks about specific company policies, manuals, or uploaded files.
+        """
+        try:
+            from tb_owlai_core.agno_integrations.knowledge_index import search_knowledge_base
+            return search_knowledge_base(query)
+        except Exception as e:
+            return [f"Error searching knowledge base: {e}"]
         
     def frappe_utils(self, function: str, args: Optional[list] = None, kwargs: Optional[dict] = None) -> dict:
         """

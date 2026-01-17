@@ -522,14 +522,29 @@ class OwlMount {
             const params = action.parameters || {};
             if (params.doctype) {
                 const docname = params.docname || (params.filters && (params.filters.name || params.filters.id));
-                if (docname) {
+                const view = params.view || 'List';
+
+                if (docname && view !== 'Page') {
                     frappe.set_route('Form', params.doctype, docname);
                 } else {
                     if (params.filters) {
                         // Correct way to pass filters to a list in Frappe
                         frappe.route_options = params.filters;
                     }
-                    frappe.set_route('List', params.doctype);
+
+                    if (view === 'Page') {
+                        // Standard Page Navigation
+                        frappe.set_route(params.doctype);
+                    } else if (view === 'List') {
+                        frappe.set_route('List', params.doctype);
+                    } else if (view === 'Report') {
+                        frappe.set_route('query-report', params.doctype);
+                    } else if (view === 'Dashboard') {
+                        frappe.set_route('dashboard-view', params.doctype);
+                    } else {
+                        // Fallback
+                        frappe.set_route('List', params.doctype);
+                    }
                 }
                 this.toggle(false); // Close spotlight on navigation
             }

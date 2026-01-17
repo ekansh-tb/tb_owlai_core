@@ -83,8 +83,9 @@
         {
             "default": "llama3",
             "fieldname": "ollama_model",
-            "fieldtype": "Data",
-            "label": "Ollama Model"
+            "fieldtype": "Link",
+            "label": "Ollama Model",
+            "options": "OwlAI Model"
         },
         {
             "fieldname": "agent_section",
@@ -112,8 +113,9 @@
         {
             "default": "llama3.2-vision",
             "fieldname": "vision_model",
-            "fieldtype": "Data",
-            "label": "Vision Model (Local)"
+            "fieldtype": "Link",
+            "label": "Vision Model (Local)",
+            "options": "OwlAI Model"
         },
         {
             "fieldname": "default_agent",

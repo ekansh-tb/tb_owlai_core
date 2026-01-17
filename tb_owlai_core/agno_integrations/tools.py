@@ -9,9 +9,9 @@ class GetDoctypeSchemaArgs(BaseModel):
     doctype: str = Field(..., description="The name of the DocType (e.g. 'Task', 'Sales Order').")
 
 class NavigateArgs(BaseModel):
-    doctype: str = Field(..., description="The DocType to navigate to (e.g. 'Sales Order', 'ToDo').")
-    view: str = Field("List", description="The view type (List, Form, Report, Dashboard, Kanban, Tree).")
-    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset on the view. Use {'name': 'DOC-ID'} for Form view.")
+    doctype: str = Field(..., description="The DocType or Page Name to navigate to (e.g. 'Sales Order', 'Workspaces').")
+    view: str = Field("List", description="The view type (List, Form, Page, Report, Dashboard, Kanban, Tree).")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset. Use {'name': 'DOC-ID'} for Form view.")
 
 class ListDocumentsArgs(BaseModel):
     doctype: str = Field(..., description="The DocType to fetch.")
@@ -101,12 +101,13 @@ class FrappeToolkit(Toolkit):
 
     def navigate(self, doctype: str, view: str = "List", filters: Optional[Union[dict, str]] = None) -> dict:
         """
-        Navigate the user to a specific DocType list or page in the Frappe Desk.
+        Navigate the user to a specific DocType list, form, or a standard Page.
         IMPORTANT: If you have a specific document name or ID, set view="Form" and use filters={"name": "id"}.
+        For standard pages (like 'Workspaces', 'Dashboard'), set view="Page" and doctype="PageName".
         
         Args:
-            doctype (str): The DocType to navigate to.
-            view (str): The view type (List, Form, etc.).
+            doctype (str): The DocType or Page Name.
+            view (str): The view type (List, Form, Page, etc.).
             filters (dict): Optional filters to apply.
         """
         parsed_filters = self._parse_dict(filters)

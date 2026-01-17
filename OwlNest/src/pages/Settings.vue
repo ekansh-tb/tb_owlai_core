@@ -1,5 +1,36 @@
 <template>
   <div class="max-w-6xl mx-auto flex flex-col md:flex-row gap-10 animate-fade-in relative z-10 pb-20">
+    <Dialog v-model="showIndexModal" :options="{ title: 'Index New Knowledge' }">
+      <template #body-content>
+        <div class="space-y-4">
+             <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Title</label>
+                <input v-model="newDoc.title" type="text" class="w-full bg-gray-100 border border-transparent focus:bg-white focus:border-gray-300 rounded-lg px-3 py-2 text-sm transition-all" placeholder="e.g. ERPNext Documentation" />
+             </div>
+             
+             <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Source Type</label>
+                <div class="flex gap-2">
+                    <button @click="newDoc.source_type = 'URL'" :class="['px-4 py-2 rounded-lg text-xs font-bold transition-all', newDoc.source_type === 'URL' ? 'bg-accent-purple text-white' : 'bg-gray-200 text-gray-600']">URL</button>
+                    <button @click="newDoc.source_type = 'Text'" :class="['px-4 py-2 rounded-lg text-xs font-bold transition-all', newDoc.source_type === 'Text' ? 'bg-accent-purple text-white' : 'bg-gray-200 text-gray-600']">Text</button>
+                </div>
+             </div>
+
+             <div v-if="newDoc.source_type === 'URL'">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">URL</label>
+                <input v-model="newDoc.url" type="url" class="w-full bg-gray-100 border border-transparent focus:bg-white focus:border-gray-300 rounded-lg px-3 py-2 text-sm transition-all" placeholder="https://..." />
+             </div>
+
+             <div v-if="newDoc.source_type === 'Text'">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Content</label>
+                <textarea v-model="newDoc.content" rows="4" class="w-full bg-gray-100 border border-transparent focus:bg-white focus:border-gray-300 rounded-lg px-3 py-2 text-sm transition-all" placeholder="Paste text content here..."></textarea>
+             </div>
+        </div>
+      </template>
+      <template #actions>
+        <Button @click="idxResource" :loading="indexing" variant="solid">Start Indexing</Button>
+      </template>
+    </Dialog>
     
     <!-- SETTINGS SIDEBAR -->
     <aside class="w-full md:w-64 shrink-0 space-y-2">
@@ -146,13 +177,22 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                             <div class="px-2 py-0.5 rounded-md bg-white/5 text-[9px] font-black uppercase tracking-widest text-gray-500">Vectorized</div>
-                             <div class="px-2 py-0.5 rounded-md bg-emerald-500/10 text-[9px] font-black uppercase tracking-widest text-emerald-400">Ready</div>
+                        <div class="flex items-center gap-2">
+                             <div class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest"
+                                :class="{
+                                    'bg-emerald-500/10 text-emerald-400': doc.status === 'Indexed',
+                                    'bg-yellow-500/10 text-yellow-400': doc.status === 'Indexing',
+                                    'bg-red-500/10 text-red-400': doc.status === 'Failed',
+                                    'bg-white/5 text-gray-500': doc.status === 'Pending'
+                                }">
+                                {{ doc.status || 'Unknown' }}
+                             </div>
+                        </div>
                         </div>
                     </div>
                 </div>
 
-                <button class="w-full py-6 rounded-3xl border-2 border-dashed border-white/10 hover:border-accent-cyan/30 bg-white/[0.01] hover:bg-accent-cyan/[0.02] transition-all flex flex-col items-center gap-3">
+                <button @click="showIndexModal = true" class="w-full py-6 rounded-3xl border-2 border-dashed border-white/10 hover:border-accent-cyan/30 bg-white/[0.01] hover:bg-accent-cyan/[0.02] transition-all flex flex-col items-center gap-3">
                     <div class="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center">
                         <Plus class="w-6 h-6 text-gray-500" />
                     </div>
@@ -170,7 +210,7 @@ import {
     Cpu, Sliders, Settings, Brain, Globe, Database, Info, 
     Trash2, RefreshCw, Layers, Zap, FileText, Plus 
 } from 'lucide-vue-next'
-import { createResource } from 'frappe-ui'
+import { createResource, Dialog, Button } from 'frappe-ui'
 
 const activeTab = ref('general')
 
@@ -213,7 +253,7 @@ const knowledge = createResource({
     url: 'frappe.client.get_list',
     params: {
         doctype: 'OwlAI Knowledge Base',
-        fields: ['name', 'title', 'creation'],
+        fields: ['name', 'title', 'creation', 'status'],
         limit: 10,
         order_by: 'creation desc'
     },
@@ -238,6 +278,51 @@ async function deleteMemory(name) {
 function formatDate(date) {
     if (!date) return '-'
     return new Date(date).toLocaleDateString()
+}
+
+// Indexing Logic
+const showIndexModal = ref(false)
+const indexing = ref(false)
+const newDoc = reactive({
+    title: '',
+    source_type: 'URL',
+    url: '',
+    content: ''
+})
+
+async function idxResource() {
+    if (!newDoc.title) return alert('Title is required')
+    
+    try {
+        indexing.value = true
+        await createResource({
+            url: 'frappe.client.insert',
+            params: {
+                doc: {
+                    doctype: 'OwlAI Knowledge Base',
+                    title: newDoc.title,
+                    source_type: newDoc.source_type,
+                    url: newDoc.url,
+                    content: newDoc.content,
+                    status: 'Pending'
+                }
+            }
+        }).submit()
+        
+        showIndexModal.value = false
+        // Reset
+        newDoc.title = ''
+        newDoc.url = ''
+        newDoc.content = ''
+        
+        // Refresh list
+        knowledge.reload()
+    } catch (e) {
+        console.error(e)
+        alert('Failed to start indexing.')
+    } finally {
+        indexing.value = false
+    }
 }
 </script>
 

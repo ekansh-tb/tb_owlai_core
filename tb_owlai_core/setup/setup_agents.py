@@ -27,6 +27,23 @@ Core Rules:
         })
         doc.insert(ignore_permissions=True)
         print("Created OwlAI Navigator")
+    else:
+        # Update existing
+        name = frappe.db.get_value("OwlAI Agent", {"agent_name": "OwlAI Navigator"}, "name")
+        doc = frappe.get_doc("OwlAI Agent", name)
+        
+        # Tools: navigate, search_documents, get_doctype_info
+        tools = []
+        for t in ["navigate", "search_documents", "get_doctype_info", "list_documents"]:
+            if frappe.db.exists("OwlAI Tool", {"tool_name": t}):
+                tool_id = frappe.db.get_value("OwlAI Tool", {"tool_name": t}, "name")
+                tools.append({"tool": tool_id, "enabled": 1})
+        
+        # Clear and re-add to ensure order and presence
+        doc.tools = []
+        doc.extend("tools", tools)
+        doc.save(ignore_permissions=True)
+        print("Updated OwlAI Navigator")
 
     # 2. Analytics Agent
     if not frappe.db.exists("OwlAI Agent", {"agent_name": "OwlAI Analytics"}):
@@ -50,6 +67,22 @@ Core Rules:
         })
         doc.insert(ignore_permissions=True)
         print("Created OwlAI Analytics")
+    else:
+        # Update existing
+        name = frappe.db.get_value("OwlAI Agent", {"agent_name": "OwlAI Analytics"}, "name")
+        doc = frappe.get_doc("OwlAI Agent", name)
+        
+        # Tools: list_documents, generate_report, get_doctype_info, frappe_utils
+        tools = []
+        for t in ["list_documents", "generate_report", "get_doctype_info", "frappe_utils", "get_page_content"]:
+             if frappe.db.exists("OwlAI Tool", {"tool_name": t}):
+                tool_id = frappe.db.get_value("OwlAI Tool", {"tool_name": t}, "name")
+                tools.append({"tool": tool_id, "enabled": 1})
+        
+        doc.tools = []
+        doc.extend("tools", tools)
+        doc.save(ignore_permissions=True)
+        print("Updated OwlAI Analytics")
 
     frappe.db.commit()
 

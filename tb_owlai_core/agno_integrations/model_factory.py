@@ -16,11 +16,11 @@ def get_model_instance(model_link_name):
     # 1. Default to Settings if no specific model provided
     if not model_link_name:
         settings = frappe.get_single("OwlAI Settings")
-        return Ollama(id=settings.ollama_model or "qwen2.5:3b")
+        return Ollama(id=settings.ollama_model or "llama3.2:3b")
 
     if not frappe.db.exists("OwlAI Model", model_link_name):
         frappe.log_error(f"Model not found: {model_link_name}")
-        return Ollama(id="qwen2.5:3b")
+        return Ollama(id="llama3.2:3b")
 
     model_doc = frappe.get_doc("OwlAI Model", model_link_name)
     provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)

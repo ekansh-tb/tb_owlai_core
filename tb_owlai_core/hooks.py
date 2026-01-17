@@ -28,9 +28,7 @@ app_license = "mit"
 # include js, css files in header of desk.html
 app_include_css = "/assets/tb_owlai_core/css/owlai_workspace.css"
 app_include_js = [
-    "/assets/tb_owlai_core/js/utils/owl_chat.js?v=9",
-    "/assets/tb_owlai_core/js/owl_injector.js?v=2",
-    "/assets/tb_owlai_core/js/utils/owlai_workspace_styler.js"
+    "/assets/tb_owlai_core/js/owl_mount.js"
 ]
 
 # include js, css files in header of web template
@@ -253,3 +251,9 @@ after_install = "tb_owlai_core.setup.install.after_install"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+# Website Routing
+# ---------------
+website_route_rules = [
+    {"from_route": "/owlnest/<path:app_path>", "to_route": "owlnest"},
+    {"from_route": "/owlnest", "to_route": "owlnest"},
+]

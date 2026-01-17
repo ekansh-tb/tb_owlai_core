@@ -75,32 +75,89 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     if agent_doc and agent_doc.system_prompt:
         instructions.append(agent_doc.system_prompt)
         
+
+
     # 5. Tools
-    # For "Generic Product", we just inject the FrappeToolkit which exposes everything allowed by Registry.
-    # Future: Filter tools based on agent_doc.tools list
-    selected_tools = None
-    if agent_doc:
-        selected_tools = []
-        if agent_doc.tools:
-            for t in agent_doc.tools:
-                if t.enabled:
-                    # 'tool' field is the Link to OwlAI Tool -> name matches tool_name
-                    selected_tools.append(t.tool)
+    tools_list = []
     
-    tools_list = [FrappeToolkit(selected_tools=selected_tools)]
+    # Identify enabled tools
+    frappe_tools = []
+    native_tools = []
+    
+    if agent_doc and agent_doc.tools:
+        for t in agent_doc.tools:
+            if t.enabled:
+                tool_name = t.tool # Name of the OwlAI Tool document
+                
+                # Check for Native Agno Tools
+                if tool_name == "Web Search" or tool_name == "DuckDuckGo":
+                    try:
+                        from agno.tools.duckduckgo import DuckDuckGo
+                        native_tools.append(DuckDuckGo())
+                    except ImportError:
+                        frappe.log_error("DuckDuckGo Tool Import Error", "OwlAI")
+                
+                elif tool_name == "Exa Search":
+                    try:
+                        from agno.tools.exa import ExaTools
+                        # api_key should be in environment or passed
+                        # Assuming env var EXA_API_KEY is set or we fetch from settings
+                        native_tools.append(ExaTools())
+                    except:
+                         pass
+                         
+                else:
+                    # Assume it's a Frappe Toolkit tool
+                    frappe_tools.append(tool_name)
+    
+    # Always include FrappeToolkit (generic) if no specific tools selected, 
+    # OR if specific frappe tools are selected.
+    # If agent has NO tools defined, we give it everything by default (legacy behavior)
+    if not agent_doc or not agent_doc.tools:
+         tools_list.append(FrappeToolkit())
+    elif frappe_tools:
+         tools_list.append(FrappeToolkit(selected_tools=frappe_tools))
+
+    # Add Native Tools
+    tools_list.extend(native_tools)
+
+
 
     # 6. Instantiate Agent
+    
+    # Context Compression
+    from agno.compression.manager import CompressionManager
+    compression_manager = CompressionManager(
+        model=model_instance,
+        compress_tool_results=True,
+        compress_token_limit=10000,
+    )
+    
+    extra_instructions = [
+        "Use `get_doctype_info(doctype=...)` if you need to know the field names before creating or updating a document.",
+        "Use `search_knowledge_base(query=...)` if the user asks for documentation, policies, or how-to guides.",
+        "Always double-check the 'name' (ID) of a document before updating it."
+    ]
+    instructions.extend(extra_instructions)
+
     agent = Agent(
         model=model_instance,
         tools=tools_list,
-        db=FrappeStorage(),
+        db=FrappeStorage(), 
         session_id=conversation_id,
         instructions=instructions,
         description=f"Agent: {agent_name}",
         add_history_to_context=True, 
-        num_history_runs=5, # Keep context small for now
+        num_history_runs=5,
         debug_mode=debug_mode,
-        markdown=True
+        markdown=True,
+        # Compression & Memory
+        compression_manager=compression_manager,
+        enable_agentic_memory=True,
+        enable_user_memories=True,
+        add_memories_to_context=True,
     )
+
     
     return agent
+

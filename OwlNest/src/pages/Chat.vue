@@ -1,367 +1,457 @@
 <template>
-  <div class="flex h-full">
-     <!-- History Sidebar -->
-     <div class="w-64 border-r border-white/5 p-4 flex flex-col hidden md:flex shrink-0 bg-black/20">
-        <button @click="startNewChat" class="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-accent-purple text-white font-medium hover:bg-accent-purple/90 transition-all mb-4 shadow-lg shadow-accent-purple/20">
-           <Plus class="w-4 h-4" />
-           New Chat
-        </button>
-
-        <!-- Search Input -->
-        <div class="relative mb-2">
-            <input v-model="searchQuery" 
-                   @input="searchConversations"
-                   type="text" 
-                   placeholder="Search history..." 
-                   class="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-3 pr-8 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-accent-purple/50"
-            />
-            <Search class="w-4 h-4 text-gray-500 absolute right-2 top-2.5" />
-        </div>
-
-        <div class="flex-1 overflow-auto space-y-1 pr-2 custom-scrollbar">
-            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 mt-2">History</h3>
-            <div v-for="conv in conversations.data" :key="conv.name"
-                 class="group relative p-3 rounded-xl hover:bg-white/5 cursor-pointer text-sm transition-all border border-transparent"
-                 :class="currentConvId === conv.name ? 'bg-white/10 text-white border-white/10' : 'text-gray-400'"
-                 @click="loadConversation(conv.name)">
-                 
-                 <div class="truncate pr-4">{{ conv.title || 'New Conversation' }}</div>
-
-                 <!-- Delete Action (Visible on Hover) -->
-                 <button @click.stop="deleteConversation(conv.name)" 
-                         class="absolute right-2 top-2 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity p-1">
-                     <Trash2 class="w-3.5 h-3.5" />
-                 </button>
-            </div>
-        </div>
-     </div>
-
-     <!-- Chat Area -->
-     <div class="flex-1 flex flex-col relative bg-transparent">
+  <div class="flex h-full font-sans text-gray-100 selection:bg-purple-500/30 overflow-hidden glass-panel rounded-3xl border border-white/5 shadow-2xl relative">
+     
+     <!-- 1. LEFT SIDEBAR (History) -->
+     <aside class="w-[300px] flex flex-col shrink-0 border-r border-white/5 bg-black/20 backdrop-blur-3xl transition-all duration-500">
         
-        <!-- Chat Header -->
-        <div class="h-16 border-b border-white/5 flex items-center justify-between px-6 shrink-0 bg-white/5">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent-purple to-pink-500 flex items-center justify-center shadow-lg shadow-accent-purple/20">
-                     <Bot class="w-5 h-5 text-white" />
-                </div>
-                <div class="flex flex-col">
-                    <h3 class="font-bold text-white text-sm">
-                        {{ currentTitle || 'OwlAI Assistant' }}
-                    </h3>
-                    <span v-if="currentConvId" class="text-xs text-gray-500 font-mono">
-                        {{ currentConvId }}
-                    </span>
-                </div>
-            </div>
-            
-             <div class="flex items-center gap-2">
-                 <button v-if="isEmbedded" @click="openFullView" class="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors" title="Open in Full View">
-                     <ExternalLink class="w-4 h-4" />
-                 </button>
-                 <button @click="startNewChat" class="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors" title="New Chat">
-                     <Plus class="w-4 h-4" />
-                 </button>
-             </div>
+        <!-- Search & Control -->
+        <div class="h-20 flex items-center px-6 border-b border-white/5 shrink-0 justify-between">
+            <span class="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Recents</span>
+            <button @click="startNewChat" class="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 transition-all group">
+                <Plus class="w-4 h-4 text-gray-400 group-hover:text-white group-hover:rotate-90 transition-all duration-300" />
+            </button>
         </div>
 
-        <div class="flex-1 overflow-auto p-6 space-y-6 scroll-smooth custom-scrollbar" ref="scrollContainer">
-            <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-center opacity-50 pb-20">
-                <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-accent-purple to-pink-500 flex items-center justify-center mb-6 shadow-2xl">
-                    <Bot class="w-10 h-10 text-white" />
-                </div>
-                <h2 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">How can I help you?</h2>
+        <!-- History List -->
+        <div class="flex-1 overflow-auto px-4 py-4 space-y-2 custom-scrollbar">
+            <div v-for="conv in conversations.data" :key="conv.name"
+                 class="group relative p-3.5 rounded-2xl cursor-pointer text-sm transition-all border border-transparent flex justify-between items-start"
+                 :class="currentConvId === conv.name ? 'bg-white/[0.08] text-white border-white/5 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:translate-x-1'"
+                 @click="loadConversation(conv.name)">
+                 <div class="flex-1 min-w-0 pr-2">
+                    <div class="truncate font-medium">{{ conv.title || 'New Conversation' }}</div>
+                    <div class="text-[10px] text-gray-600 mt-1 font-mono uppercase tracking-widest flex items-center gap-1.5">
+                        <Clock class="w-2.5 h-2.5" />
+                        {{ formatDate(conv.modified) }}
+                    </div>
+                 </div>
+                 <button @click.stop="deleteConversation(conv.name)" 
+                         class="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1.5 -mr-1"
+                         title="Delete Conversation">
+                     <Trash2 class="w-4 h-4" />
+                 </button>
+            </div>
+        </div>
+        
+        <!-- Theme Info -->
+        <div class="p-6 border-t border-white/5 bg-white/5">
+            <div class="flex items-center gap-2 text-[10px] font-mono text-gray-500 tracking-tighter uppercase">
+               <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+               OwlAi can see what you can see!!!
+            </div>
+        </div>
+     </aside>
+
+     <!-- 2. MAIN CONTENT (Chat Area) -->
+     <main class="flex-1 flex flex-col relative bg-transparent min-w-0">
+        
+        <!-- Header -->
+        <header class="h-20 flex items-center justify-between px-8 border-b border-white/5">
+            <div class="flex items-center gap-4">
+                 <h2 class="text-xl font-bold text-white/90 tracking-tight">
+                    {{ currentTitle || 'Agent Session' }}
+                 </h2>
+                 <transition name="fade">
+                    <span v-if="chat.loading" class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#41d1ff] bg-[#41d1ff]/10 px-3 py-1 rounded-full border border-[#41d1ff]/20">
+                        <Loader2 class="w-3 h-3 animate-spin" />
+                        Generating
+                    </span>
+                 </transition>
             </div>
             
-            <div v-for="(msg, idx) in messages" :key="idx" class="flex gap-4 group" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
-               <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-lg gradient-border"
-                    :class="msg.role === 'user' ? 'bg-accent-purple' : 'bg-secondary'">
-                  <User v-if="msg.role === 'user'" class="w-4 h-4 text-white" />
-                  <Bot v-else class="w-4 h-4 text-accent-cyan" />
+            <div class="flex items-center gap-3">
+                 <button class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-400 hover:text-white transition-all border border-white/5">
+                     <Bot class="w-3.5 h-3.5" />
+                     <span>World Class Agent</span>
+                 </button>
+                 <button @click="showArtifacts = !showArtifacts" 
+                         class="p-2.5 hover:bg-white/5 rounded-xl transition-all"
+                         :class="showArtifacts ? 'text-[#bd34fe] bg-[#bd34fe]/10 border border-[#bd34fe]/20' : 'text-gray-400 border border-transparent'">
+                     <PanelRight class="w-5 h-5" />
+                 </button>
+            </div>
+        </header>
+
+        <!-- Chat Content -->
+        <div class="flex-1 overflow-auto p-6 md:p-10 space-y-10 scroll-smooth custom-scrollbar" ref="scrollContainer">
+            <!-- Empty State -->
+            <transition name="fade">
+                <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center pb-20">
+                    <div class="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#bd34fe]/20 to-[#41d1ff]/20 flex items-center justify-center mb-8 border border-white/10 backdrop-blur-xl relative">
+                        <div class="absolute inset-0 bg-white/5 blur-xl rounded-full animate-pulse"></div>
+                        <Bot class="w-10 h-10 text-white relative z-10" />
+                    </div>
+                    <h1 class="text-4xl font-black text-white mb-4 tracking-tighter">How can I assist you?</h1>
+                    <p class="text-gray-500 max-w-sm text-center text-lg leading-relaxed mb-10 font-medium">
+                        Explore your data, automate tasks, or just chat with our world-class AI agent.
+                    </p>
+                    
+                    <div class="grid grid-cols-2 gap-6 max-w-2xl w-full">
+                        <button @click="quickAction('Show me pending Sales Orders')" class="p-5 rounded-2xl bg-white/2 hover:bg-white/5 border border-white/5 hover:border-[#bd34fe]/40 transition-all text-left group">
+                            <div class="text-sm font-bold text-white mb-2 group-hover:text-[#bd34fe]">List Pending Orders</div>
+                            <div class="text-xs text-gray-500 leading-relaxed">Search for Sales Orders with a 'Pending' status across the system.</div>
+                        </button>
+                        <button @click="quickAction('What is the current system status?')" class="p-5 rounded-2xl bg-white/2 hover:bg-white/5 border border-white/5 hover:border-[#41d1ff]/40 transition-all text-left group">
+                            <div class="text-sm font-bold text-white mb-2 group-hover:text-[#41d1ff]">System Health</div>
+                            <div class="text-xs text-gray-500 leading-relaxed">Get a quick overview of active agents and background processes.</div>
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- Messages -->
+            <div v-for="(msg, idx) in filteredMessages" :key="idx" class="flex gap-6 group max-w-4xl mx-auto" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+               <div class="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xl border border-white/10 transition-transform group-hover:scale-110"
+                    :class="msg.role === 'user' ? 'bg-gradient-to-br from-[#bd34fe] to-[#7c3aed]' : 'bg-white/5'">
+                  <User v-if="msg.role === 'user'" class="w-5 h-5 text-white" />
+                  <Bot v-else-if="msg.role === 'assistant'" class="w-6 h-6 text-[#41d1ff]" />
                </div>
-               
-               <div class="max-w-[85%] rounded-2xl p-4 shadow-sm relative overflow-hidden"
-                    :class="msg.role === 'user' ? 'bg-accent-purple/20 text-white rounded-tr-none border border-accent-purple/20' : 'bg-white/5 text-gray-200 rounded-tl-none border border-white/5'">
-                  
-                  <div v-if="msg.message_type === 'action'" class="mb-2">
-                      <div class="text-xs font-mono uppercase text-gray-400 mb-1 flex items-center gap-2 border-b border-white/5 pb-1">
-                         <Cpu class="w-3 h-3" />
-                         Action
+               <div class="max-w-[80%] space-y-2">
+                   <div class="rounded-[24px] px-6 py-5 shadow-2xl relative transition-all"
+                        :class="msg.role === 'user' ? 'bg-[#bd34fe]/10 text-white border border-[#bd34fe]/20 rounded-tr-sm' : 'bg-white/[0.03] text-gray-200 border border-white/10 rounded-tl-sm'">
+                      
+                      <!-- Edit Button for User Message -->
+                       <button v-if="msg.role === 'user'" 
+                               @click="editMessage(msg.content)"
+                               class="absolute -left-10 top-2 p-2 text-gray-600 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                               title="Edit message">
+                           <Edit3 class="w-4 h-4" />
+                       </button>
+
+                       <div v-if="msg.message_type === 'action'" class="mb-4">
+                          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#10b981]/10 border border-[#10b981]/20 text-[10px] font-bold uppercase tracking-wider text-[#10b981]">
+                             <Cpu class="w-3.5 h-3.5" />
+                             <span>Action Dispatched</span>
+                          </div>
+                          <div class="mt-2 font-mono text-[11px] text-emerald-400/80 bg-black/40 p-3 rounded-xl border border-emerald-500/10 group-hover:bg-black/60 transition-all">
+                              <div v-for="action in parseActionData(msg.content)" :key="action.name" class="space-y-1">
+                                  <div class="flex items-center gap-2">
+                                      <span class="text-emerald-500 font-bold">{{ action.name }}</span>
+                                      <span class="text-gray-600">-></span>
+                                  </div>
+                                  <div class="pl-4 opacity-70 truncate">{{ action.parameters }}</div>
+                              </div>
+                          </div>
                       </div>
-                      <code class="text-xs font-mono text-emerald-400 whitespace-pre-wrap break-all">{{ msg.content }}</code>
-                  </div>
-                  
-                  <div v-else class="prose prose-invert prose-sm max-w-none break-words" v-html="renderMarkdown(msg.content)"></div>
-               </div>
+                      
+                      <div v-else class="prose prose-invert prose-sm max-w-none break-words leading-relaxed text-base" v-html="renderMarkdown(msg.content)"></div>
+                   </div>
+                   <div class="text-[9px] font-mono text-gray-600 uppercase tracking-widest px-2" :class="msg.role === 'user' ? 'text-right' : 'text-left'">
+                       {{ formatDate(msg.creation) }}
+                   </div>
+                </div>
             </div>
 
-            <div v-if="chat.loading" class="flex gap-4">
-               <div class="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0 shadow-lg border border-white/5">
-                  <Bot class="w-4 h-4 text-accent-cyan" />
-               </div>
-               <div class="bg-white/5 rounded-2xl p-4 rounded-tl-none flex items-center gap-3 text-gray-400 border border-white/5">
-                  <div class="flex gap-1">
-                    <span class="w-2 h-2 bg-accent-cyan rounded-full animate-bounce"></span>
-                    <span class="w-2 h-2 bg-accent-cyan rounded-full animate-bounce delay-100"></span>
-                    <span class="w-2 h-2 bg-accent-cyan rounded-full animate-bounce delay-200"></span>
-                  </div>
-                  <span class="text-sm font-medium">Processing...</span>
-               </div>
+            <!-- Ongoing Generation Indicator -->
+            <div v-if="chat.loading" class="flex gap-6 group max-w-4xl mx-auto">
+                <div class="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 bg-white/5 border border-white/10 animate-pulse">
+                    <Bot class="w-6 h-6 text-[#41d1ff]" />
+                </div>
+                <div class="max-w-[80%] space-y-2">
+                    <div class="bg-white/[0.03] text-gray-200 border border-white/10 rounded-tl-sm rounded-[24px] px-6 py-5 flex items-center gap-3">
+                         <div class="flex gap-1.5">
+                             <div class="w-1.5 h-1.5 rounded-full bg-accent-purple animate-bounce" style="animation-delay: 0s"></div>
+                             <div class="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style="animation-delay: 0.2s"></div>
+                             <div class="w-1.5 h-1.5 rounded-full bg-accent-purple animate-bounce" style="animation-delay: 0.4s"></div>
+                         </div>
+                         <span class="text-sm font-medium text-gray-500 italic">Thinking...</span>
+                    </div>
+                </div>
             </div>
-            <div ref="bottomRef"></div>
+            
+            <div ref="bottomRef" class="h-4"></div>
         </div>
 
         <!-- Input Area -->
-        <div class="p-6 pt-2 pb-6 w-full max-w-5xl mx-auto">
-           <form @submit.prevent="sendMessage" class="relative group">
-              <div class="absolute inset-0 bg-gradient-to-r from-accent-purple/20 to-accent-cyan/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
-              <input v-model="userInput" 
-                     type="text" 
-                     placeholder="Ask OwlAI anything..." 
-                     class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-6 pr-14 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent-purple/50 focus:border-accent-purple/50 transition-all font-medium shadow-2xl relative z-10"
-                     :disabled="chat.loading"
-              />
-              <button type="submit" 
-                      :disabled="!userInput.trim() || chat.loading"
-                      class="absolute right-2 top-2 p-2 rounded-xl bg-accent-purple text-white hover:bg-accent-purple/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all z-20 shadow-lg">
-                 <Send class="w-5 h-5" />
-              </button>
-           </form>
-           <div class="text-center mt-2 text-xs text-gray-500">
-              OwlAI Core v2.0 • Powered by TechBird
-           </div>
+        <div class="p-8 w-full max-w-4xl mx-auto relative z-20">
+            <div class="relative bg-white/[0.03] backdrop-blur-3xl rounded-[28px] border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden focus-within:border-[#bd34fe]/50 focus-within:ring-1 focus-within:ring-[#bd34fe]/30 transition-all duration-500">
+                <textarea 
+                    v-model="userInput"
+                    @keydown.enter.prevent="handleEnter"
+                    rows="1"
+                    placeholder="Describe what you want to achieve..." 
+                    class="w-full bg-transparent text-white placeholder-gray-600 px-7 py-5 focus:outline-none resize-none max-h-60 custom-scrollbar text-lg italic font-light"
+                    style="min-height: 72px;"
+                ></textarea>
+                
+                <div class="flex items-center justify-between px-5 pb-4">
+                    <div class="flex items-center gap-2">
+                        <button class="p-2.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all group" title="Add context">
+                            <Paperclip class="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                        </button>
+                    </div>
+                    <button @click="sendMessage" 
+                            :disabled="!userInput.trim() || chat.loading"
+                            class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#bd34fe] to-[#7c3aed] text-white hover:scale-105 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all shadow-[0_0_20px_rgba(189,52,254,0.3)] flex items-center gap-2 font-bold text-sm tracking-tight text-white/90">
+                        <span>Send Command</span>
+                        <Send class="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
         </div>
-     </div>
+     </main>
+
+     <!-- 3. RIGHT SIDEBAR -->
+     <transition name="slide">
+        <aside v-if="showArtifacts" class="w-[380px] border-l border-white/5 bg-black/20 backdrop-blur-3xl flex flex-col shrink-0 relative z-30 shadow-2xl">
+            <div class="h-20 flex px-8 border-b border-white/5 space-x-6">
+                <button @click="workspaceTab = 'context'" 
+                        :class="[workspaceTab === 'context' ? 'text-white border-b-2 border-accent-purple' : 'text-gray-500']"
+                        class="h-full text-[10px] font-black uppercase tracking-widest transition-all">Context</button>
+                <button @click="workspaceTab = 'memory'" 
+                        :class="[workspaceTab === 'memory' ? 'text-white border-b-2 border-accent-cyan' : 'text-gray-500']"
+                        class="h-full text-[10px] font-black uppercase tracking-widest transition-all">Memory</button>
+            </div>
+            
+            <div class="p-8 flex-1 overflow-auto custom-scrollbar space-y-8">
+                <!-- Tab: Context -->
+                <div v-if="workspaceTab === 'context'" class="space-y-4 animate-fade-in">
+                    <h4 class="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">Environment</h4>
+                    <div class="bg-white/[0.03] rounded-2xl p-5 border border-white/5 space-y-4 shadow-inner">
+                        <div v-if="bridgeContext.route">
+                            <div class="text-[9px] font-bold text-gray-500 uppercase mb-2">Active Route</div>
+                            <div class="text-xs text-[#41d1ff] font-mono bg-black/40 p-2.5 rounded-xl border border-white/5 truncate">
+                                {{ bridgeContext.route }}
+                            </div>
+                        </div>
+                        <div v-if="bridgeContext.docname">
+                            <div class="text-[9px] font-bold text-gray-500 uppercase mb-2">Target Document</div>
+                            <div class="text-xs text-emerald-400 font-mono bg-black/40 p-2.5 rounded-xl border border-white/5 truncate">
+                                {{ bridgeContext.docname }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Memory -->
+                <div v-if="workspaceTab === 'memory'" class="space-y-4 animate-fade-in">
+                     <h4 class="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">What I know about you</h4>
+                     <div v-if="memories.data?.length" class="space-y-2">
+                        <div v-for="mem in memories.data" :key="mem.name" class="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-gray-300 italic flex items-start gap-3">
+                             <Brain class="w-3.5 h-3.5 text-accent-purple shrink-0 mt-0.5" />
+                             <span>{{ mem.content }}</span>
+                        </div>
+                     </div>
+                     <div v-else class="text-center py-10 opacity-50">
+                        <Brain class="w-8 h-8 mx-auto mb-2 text-gray-700" />
+                        <p class="text-[10px] font-bold uppercase tracking-widest">No memories stored</p>
+                     </div>
+                </div>
+            </div>
+
+            <div class="p-6 border-t border-white/5">
+                 <button @click="showArtifacts = false" class="w-full py-3 rounded-xl bg-white/5 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">Close Workspace</button>
+            </div>
+        </aside>
+     </transition>
+
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, h } from 'vue'
 import { createResource } from 'frappe-ui'
-import { Plus, User, Bot, Send, Cpu, Loader2, MessageSquare, Search, Trash2, ExternalLink } from 'lucide-vue-next'
+import { 
+    MessageSquare, Book, Brain, LayoutGrid, Plus, Search, Trash2, 
+    Bot, User, Send, PanelLeftClose, PanelLeftOpen, Cpu, Loader2, 
+    PanelRight, X, ChevronDown, Paperclip, Mic, Clock, Edit3, RefreshCw
+} from 'lucide-vue-next'
 import showdown from 'showdown'
 import { useRouter, useRoute } from 'vue-router'
 import { bridge } from '../utils/bridge'
-import debounce from 'lodash/debounce' // if available, or write custom
 
 const router = useRouter()
 const route = useRoute()
+
+// State
+const activeTab = ref('chat')
+const showArtifacts = ref(false)
+const workspaceTab = ref('context')
 const userInput = ref('')
 const messages = ref([])
 const currentConvId = ref(null)
+const bridgeContext = ref({})
 const scrollContainer = ref(null)
-const bottomRef = ref(null)
-const isEmbedded = bridge.isEmbedded
-const searchQuery = ref('')
-let searchTimeout = null
 
-const currentTitle = computed(() => {
-    if(!currentConvId.value || !conversations.data) return null
-    const conv = conversations.data.find(c => c.name === currentConvId.value)
-    return conv ? (conv.title || conv.name) : null
-})
-
-const converter = new showdown.Converter({
-    tables: true,
-    simplifiedAutoLink: true,
-    strikethrough: true,
-    tasklists: true
-})
-
-function renderMarkdown(text) {
-    if(!text) return ''
-    return converter.makeHtml(text)
-}
-
-// Conversations Resource (Auto load if standalone, manual if embedded)
+// Resources
 const conversations = createResource({
     url: 'tb_owlai_core.api.router.get_conversations',
     auto: true
 })
 
-const searchConversations = () => {
-    if(searchTimeout) clearTimeout(searchTimeout)
-    searchTimeout = setTimeout(() => {
-        conversations.submit({ search_text: searchQuery.value })
-    }, 300)
-}
-
 const chat = createResource({
     url: 'tb_owlai_core.api.router.handle_input_v2',
     onSuccess(data) {
-        if (data.reply) {
-             messages.value.push({ role: 'assistant', content: data.reply, message_type: 'text' })
-        }
-        if (data.action) {
-            handleAction(data)
+        if (data.reply) messages.value.push({ role: 'assistant', content: data.reply, message_type: 'text', creation: new Date().toISOString() })
+        if (data.action_data) {
+            messages.value.push({ 
+                role: 'assistant', 
+                content: typeof data.action_data === 'string' ? data.action_data : JSON.stringify(data.action_data), 
+                message_type: 'action',
+                action_data: data.action_data,
+                creation: new Date().toISOString()
+            })
+            handleAction(data.action_data)
         }
         if (data.conversation_id && !currentConvId.value) {
             currentConvId.value = data.conversation_id
             conversations.reload()
             router.replace({ query: { ...route.query, conversation: data.conversation_id } })
         }
-    },
-    onError(err) {
-        messages.value.push({ role: 'assistant', content: "Error: " + (err.messages?.[0] || extractErrorMessage(err)), message_type: 'text' })
+        scrollToBottom()
+        memories.reload() // Reload memories after interaction
     }
 })
 
-function handleAction(data) {
-    // 1. Send to Bridge for Desk execution
-    bridge.send('EXECUTE_ACTION', {
-        action: data.action,
-        doctype: data.doctype,
-        name: data.name,
-        view: data.view,
-        route_options: data.route_options || data.filters // flexible
-    })
-
-    // 2. Show feedback message
-    let target = data.doctype
-    if (data.name) target += "/" + data.name
-    
-    messages.value.push({ 
-        role: 'assistant', 
-        content: `Executing action: **${data.action}** on \`${target}\`...`, 
-        message_type: 'text' 
-    })
-}
-
-function extractErrorMessage(err) {
-    try {
-        if (typeof err === 'string') return err;
-        return "An unknown error occurred."
-    } catch (e) {
-        return "An unknown error occurred."
-    }
-}
-
 const historyResource = createResource({
     url: 'tb_owlai_core.api.router.get_conversation_messages',
-    makeParams() {
-        return { conversation_id: currentConvId.value }
-    },
+    makeParams() { return { conversation_id: currentConvId.value } },
     onSuccess(data) {
         messages.value = data
         scrollToBottom()
     }
 })
 
-const convInfoResource = createResource({
-    url: 'tb_owlai_core.api.router.get_conversation_info',
-    onSuccess(data) {
-        if(data && data.name) {
-             // Update or add to conversations list
-             if(!conversations.data) conversations.data = []
-             const idx = conversations.data.findIndex(c => c.name === data.name)
-             if(idx >= 0) {
-                 conversations.data[idx] = data
-             } else {
-                 conversations.data.unshift(data)
-             }
-        }
-    }
+const memories = createResource({
+    url: 'frappe.client.get_list',
+    params: {
+        doctype: 'OwlAI User Memory',
+        fields: ['content', 'name'],
+        limit: 10,
+        order_by: 'creation desc'
+    },
+    auto: true
 })
 
-function loadConversation(id) {
-    currentConvId.value = id
-    router.replace({ query: { ...route.query, conversation: id } })
-    historyResource.reload()
-    
-    // Check if we have the title details, if not fetch them
-    if(conversations.data) {
-        const exists = conversations.data.find(c => c.name === id)
-        if(!exists) {
-            convInfoResource.submit({ conversation_id: id })
-        }
-    } else {
-         // Should assume separate load handles it, but safe to fetch
-         convInfoResource.submit({ conversation_id: id })
-    }
+// Logic
+const filteredMessages = computed(() => {
+    return messages.value.filter(m => ['user', 'assistant'].includes(m.role))
+})
+
+const currentTitle = computed(() => {
+    const c = conversations.data?.find(x => x.name === currentConvId.value)
+    return c ? (c.title || c.name) : null
+})
+
+function editMessage(content) {
+    userInput.value = content
+}
+
+function formatDate(d) {
+    if(!d) return ''
+    const dt = new Date(d)
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function startNewChat() {
     currentConvId.value = null
     messages.value = []
-    router.replace({ query: { mode: isEmbedded ? 'embedded' : undefined } })
+    router.replace({ query: { ...route.query, conversation: undefined } })
 }
 
-function openFullView() {
-    window.open('/owlnest/chat', '_blank')
-}
-
-const deleteResource = createResource({
-    url: 'tb_owlai_core.api.router.delete_conversation',
-    onSuccess(data) {
-        if(data.status === 'success') {
-             if(currentConvId.value === deleteTargetId.value) {
-                 startNewChat()
-             }
-             conversations.reload()
-        } else {
-             alert("Error deleting conversation")
-        }
-        deleteTargetId.value = null
-    },
-    onError(err) {
-        alert("Error deleting conversation: " + extractErrorMessage(err))
-        deleteTargetId.value = null
-    }
-})
-
-let deleteTargetId = ref(null)
-
-function deleteConversation(id) {
-    if(!confirm("Are you sure you want to delete this conversation?")) return;
-    deleteTargetId.value = id
-    deleteResource.submit({ conversation_id: id })
+function handleEnter(e) {
+    if (!e.shiftKey) sendMessage()
 }
 
 function sendMessage() {
-    const text = userInput.value
-    if (!text) return
-    
-    messages.value.push({ role: 'user', content: text, message_type: 'text' })
+    const text = userInput.value.trim()
+    if (!text || chat.loading) return
+    messages.value.push({ role: 'user', content: text, message_type: 'text', creation: new Date().toISOString() })
     userInput.value = ''
     scrollToBottom()
-
+    
     chat.submit({
         text: text,
         conversation_id: currentConvId.value,
-        // Context handle by bridge or injected here if needed
+        context: bridgeContext.value
     })
+}
+
+function quickAction(text) {
+    userInput.value = text
+    sendMessage()
+}
+
+function handleAction(action_data) {
+    const tools = Array.isArray(action_data) ? action_data : [action_data]
+    tools.forEach(tool => {
+        bridge.send('EXECUTE_ACTION', {
+            action: tool.name === 'navigate' ? 'navigate' : tool.name,
+            ...tool.parameters
+        })
+    })
+}
+
+function parseActionData(content) {
+    try {
+        const data = JSON.parse(content)
+        const tools = Array.isArray(data) ? data : [data]
+        return tools.map(t => ({
+            name: t.name || 'Unknown Action',
+            parameters: JSON.stringify(t.parameters || t.arguments || {})
+        }))
+    } catch (e) {
+        return [{ name: 'Action Error', parameters: content }]
+    }
+}
+
+function loadConversation(id) {
+    currentConvId.value = id
+    router.replace({ query: { ...route.query, conversation: id } })
+    historyResource.reload()
+}
+
+function deleteConversation(id) {
+    if(!confirm('Delete this conversation?')) return
+    createResource({
+        url: 'tb_owlai_core.api.router.delete_conversation',
+        onSuccess() { conversations.reload(); if(currentConvId.value === id) startNewChat() }
+    }).submit({ conversation_id: id })
+}
+
+function renderMarkdown(text) {
+    if (!text) return ''
+    const cleanText = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim()
+    const conv = new showdown.Converter({ tables: true, simplifiedAutoLink: true, strikethrough: true })
+    return conv.makeHtml(cleanText)
 }
 
 function scrollToBottom() {
     nextTick(() => {
-        if(bottomRef.value) {
-             bottomRef.value.scrollIntoView({ behavior: 'smooth' })
+        if (scrollContainer.value) {
+            scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight
         }
     })
 }
 
+// Lifecycle
 onMounted(() => {
-    if (route.query.conversation) {
-        loadConversation(route.query.conversation)
-    }
-    
-    bridge.on('UPDATE_CONTEXT', (payload) => {
-        console.log("OwlNest Bridge Context (Payload):", payload)
+    if (route.query.conversation) loadConversation(route.query.conversation)
+    window.addEventListener('message', (event) => {
+        const { action, payload } = event.data
+        if (action === 'UPDATE_CONTEXT') bridgeContext.value = payload
     })
-})
-
-watch(() => route.query.conversation, (newId) => {
-    if (newId && newId !== currentConvId.value) {
-        loadConversation(newId)
-    }
 })
 </script>
 
-<style>
-/* ... (Global styles kept same, imported from index.css mostly) */
-.prose { color: #e2e8f0; }
-.prose strong { color: #fff; }
-.prose a { color: #6C5DD3; }
-.prose pre { background: rgba(0,0,0,0.3); border-radius: 0.5rem; }
-.prose code { color: #00D2FF; }
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: opacity 0.5s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.slide-enter-active, .slide-leave-active { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-enter-from, .slide-leave-to { transform: translateX(100%); opacity: 0; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
+
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 </style>

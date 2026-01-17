@@ -1,10 +1,34 @@
-
-from typing import Optional, Union, Any, List, Dict
 import json
 import ast
+from typing import Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field
 from agno.tools import Toolkit
 from tb_owlai_core.tool_registry import ToolRegistry
-import frappe
+
+class GetDoctypeSchemaArgs(BaseModel):
+    doctype: str = Field(..., description="The name of the DocType (e.g. 'Task', 'Sales Order').")
+
+class NavigateArgs(BaseModel):
+    doctype: str = Field(..., description="The DocType to navigate to (e.g. 'Sales Order', 'ToDo').")
+    view: str = Field("List", description="The view type (List, Form, Report, Dashboard, Kanban, Tree).")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset on the view. Use {'name': 'DOC-ID'} for Form view.")
+
+class ListDocumentsArgs(BaseModel):
+    doctype: str = Field(..., description="The DocType to fetch.")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Filters as a dictionary.")
+    fields: Optional[List[str]] = Field(None, description="Fields to retrieve.")
+    limit_page_length: int = Field(20, description="Number of records to return.")
+
+class SearchDocumentsArgs(BaseModel):
+    query: str = Field(..., description="The search string.")
+    doctype: Optional[str] = Field(None, description="Optional DocType to restrict search to.")
+
+class SearchKnowledgeBaseArgs(BaseModel):
+    query: str = Field(..., description="The natural language query for documentation and policies.")
+
+class GetDocumentArgs(BaseModel):
+    doctype: str = Field(..., description="The DocType of the document.")
+    name: str = Field(..., description="The unique name (ID) of the document.")
 
 class FrappeToolkit(Toolkit):
     def __init__(self, selected_tools: Optional[List[str]] = None):
@@ -12,10 +36,6 @@ class FrappeToolkit(Toolkit):
         self.registry = ToolRegistry() # Instantiate
         
         # Tool Name mapping to Method
-        # Note: Tool names must match what is in 'OwlAI Tool' / 'ToolRegistry' keys if we want consistency
-        # Or we map UI names to these methods.
-        # Assuming UI selection passes "list_documents", "get_document" etc.
-        
         tool_map = {
             "get_doctype_info": self.get_doctype_schema,
             "list_documents": self.list_documents,
@@ -74,97 +94,38 @@ class FrappeToolkit(Toolkit):
         Use this before creating or updating documents to know which fields are mandatory.
 
         Args:
-            doctype (str): The name of the DocType (e.g. 'Task', 'Sales Order').
-
-        Returns:
-            dict: Schema information including fields and permissions.
+            doctype (str): The name of the DocType.
         """
         return self._exec("get_doctype_info", doctype=doctype)
+
+
+    def navigate(self, doctype: str, view: str = "List", filters: Optional[Union[dict, str]] = None) -> dict:
+        """
+        Navigate the user to a specific DocType list or page in the Frappe Desk.
+        IMPORTANT: If you have a specific document name or ID, set view="Form" and use filters={"name": "id"}.
+        
+        Args:
+            doctype (str): The DocType to navigate to.
+            view (str): The view type (List, Form, etc.).
+            filters (dict): Optional filters to apply.
+        """
+        parsed_filters = self._parse_dict(filters)
+        
+        # Heuristic: If filters contains 'name', it's usually a Form view request
+        if parsed_filters and ("name" in parsed_filters or "id" in parsed_filters):
+             if view == "List": # Only override if it was default
+                 view = "Form"
+
+        return self._exec("navigate", doctype=doctype, view=view, filters=parsed_filters)
 
     def list_documents(self, doctype: str, filters: Optional[Union[dict, str]] = None, fields: Optional[Union[list, str]] = None, limit_page_length: int = 20) -> list:
         """
         Fetch a list of documents for a given DocType.
-
-        Args:
-            doctype (str): The DocType to list.
-            filters (dict): Optional filters (e.g., {"status": "Open"}).
-            fields (list): Optional list of fields to fetch.
-            limit_page_length (int): Max number of records to return. Default 20.
-
-        Returns:
-            list: A list of document dictionaries.
         """
         parsed_filters = self._parse_dict(filters)
         parsed_fields = self._parse_list(fields)
         return self._exec("list_documents", doctype=doctype, filters=parsed_filters, fields=parsed_fields, limit_page_length=limit_page_length)
 
-    def get_document(self, doctype: str, name: str) -> dict:
-        """
-        Get a specific document by name.
-
-        Args:
-            doctype (str): The DocType name.
-            name (str): The document name (ID).
-
-        Returns:
-            dict: The full document content.
-        """
-        return self._exec("get_document", doctype=doctype, name=name)
-
-    def create_document(self, doctype: str, data: dict) -> dict:
-        """
-        Create a new document.
-
-        Args:
-            doctype (str): The DocType to create.
-            data (dict): The fields and values for the new document.
-
-        Returns:
-            dict: The created document.
-        """
-        return self._exec("create_document", doctype=doctype, data=data)
-
-    def update_document(self, doctype: str, name: str, data: dict) -> dict:
-        """
-        Update an existing document.
-
-        Args:
-            doctype (str): The DocType.
-            name (str): The document name.
-            data (dict): The fields to update.
-
-        Returns:
-            dict: The updated document.
-        """
-        return self._exec("update_document", doctype=doctype, name=name, data=data)
-
-    def delete_document(self, doctype: str, name: str) -> str:
-        """
-        Delete a document.
-
-        Args:
-            doctype (str): The DocType.
-            name (str): The document name.
-
-        Returns:
-            str: Success message.
-        """
-        return self._exec("delete_document", doctype=doctype, name=name)
-
-    def navigate(self, doctype: str, view: str = "List", filters: Optional[Union[dict, str]] = None) -> dict:
-        """
-        Navigate the user to a specific DocType list or page in the Frappe Desk.
-
-        Args:
-            doctype (str): The DocType to navigate to.
-            view (str): The view type (List, Report, Dashboard, Kanban, Tree). Default is 'List'.
-            filters (dict): Optional filters to apply to the view (e.g. {"status": "Open"}).
-
-        Returns:
-            dict: Action payload for the frontend.
-        """
-        parsed_filters = self._parse_dict(filters)
-        return self._exec("navigate", doctype=doctype, view=view, filters=parsed_filters)
 
     def search_documents(self, query: str, doctype: Optional[str] = None) -> list:
         """
@@ -174,8 +135,7 @@ class FrappeToolkit(Toolkit):
     
     def search_knowledge_base(self, query: str) -> list:
         """
-        Search the OwlAI Knowledge Base (Vector Store) for documents, policies, or internal wikis.
-        Use this when the user asks about specific company policies, manuals, or uploaded files.
+        Search the OwlAI Knowledge Base (Vector Store) for documentation and policies.
         """
         try:
             from tb_owlai_core.agno_integrations.knowledge_index import search_knowledge_base
@@ -183,6 +143,48 @@ class FrappeToolkit(Toolkit):
         except Exception as e:
             return [f"Error searching knowledge base: {e}"]
         
+    def get_document(self, doctype: str, name: str) -> dict:
+        """
+        Get all fields of a specific document.
+        
+        Args:
+            doctype (str): The DocType of the document.
+            name (str): The name (ID) of the document.
+        """
+        return self._exec("get_document_v2", doctype=doctype, name=name)
+
+    def create_document(self, doctype: str, properties: Union[dict, str]) -> dict:
+        """
+        Create a new document.
+        Use `get_doctype_info` first to see which fields are required.
+        
+        Args:
+            doctype (str): The DocType to create.
+            properties (dict): Fields and values for the new document.
+        """
+        return self._exec("create_document_v2", doctype=doctype, properties=self._parse_dict(properties))
+
+    def update_document(self, doctype: str, name: str, properties: Union[dict, str]) -> dict:
+        """
+        Update an existing document.
+        
+        Args:
+            doctype (str): The DocType of the document.
+            name (str): The name (ID) of the document to update.
+            properties (dict): Fields and values to update.
+        """
+        return self._exec("update_document_v2", doctype=doctype, name=name, properties=self._parse_dict(properties))
+
+    def delete_document(self, doctype: str, name: str) -> dict:
+        """
+        Delete a document.
+        
+        Args:
+            doctype (str): The DocType of the document.
+            name (str): The name (ID) of the document to delete.
+        """
+        return self._exec("delete_document_v2", doctype=doctype, name=name)
+
     def frappe_utils(self, function: str, args: Optional[list] = None, kwargs: Optional[dict] = None) -> dict:
         """
         Call standard Frappe utility functions (formatting, etc.).

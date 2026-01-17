@@ -146,3 +146,16 @@ def search_knowledge_base(query: str, limit: int = 5):
     except Exception as e:
         frappe.log_error(f"Search Error: {e}")
         return []
+
+def delete_from_index(doc_name: str):
+    """
+    Deletes all chunks related to a specific document from the index.
+    """
+    try:
+        vector_db = get_vector_db()
+        # Use the 'where' clause to delete by metadata
+        vector_db.delete(where=f"doc_name = '{doc_name}'")
+        return {"status": "success", "doc_name": doc_name}
+    except Exception as e:
+        frappe.log_error(f"Delete from Index Error: {e}")
+        raise e

@@ -9,7 +9,7 @@ def get_system_context():
     apps = frappe.get_installed_apps()
     app_info = []
     for app in apps:
-        version = frappe.get_attr(f"{app}.__version__") if hasattr(frappe, "get_attr") else "Unknown" # simplified
+        version = frappe.get_attr(f"{app}.__version__") if hasattr(frappe, "get_attr") else "Unknown"
         try:
             import importlib
             module = importlib.import_module(app)
@@ -31,7 +31,6 @@ def get_company_context():
     """
     company = frappe.defaults.get_user_default("Company")
     if not company:
-        # Try to find a default company
         company = frappe.db.get_single_value("Global Defaults", "default_company")
         
     if not company:
@@ -68,37 +67,68 @@ def get_user_context(user_email=None):
 
 def get_route_context(route):
     """
-    Analyzes the current frontend route to provide specific guidance.
+    Analyzes the current frontend route provided by the Bridge.
+    Example: '/app/sales-order/NEW-ORDER-1' or '/app/todo'
     """
-    if not route:
-        return ""
-        
-    # Example routes:
-    # /app/todo
-    # /app/sales-order/new-sales-order-1
-    # /app/dashboard-view/Sales
-    
-    context = []
-    context.append(f"Current Page/Route: {route}")
+    if not route: return ""
     
     parts = route.strip("/").split("/")
+    
+    # Heuristics
     if len(parts) >= 2 and parts[0] == "app":
         doctype_slug = parts[1]
-        # heuristics to guess doctype from slug i.e. sales-order -> Sales Order
-        # This is not perfect but helpful
-        pass 
         
-    return "\n".join(context)
+        # Try to map slug to DocType
+        # This is a best guess, Frappe usually maps slug to name
+        # But we can try to find a DocType that matches
+        doctype = None
+        
+        # Exact match check first (e.g. Sales Order -> sales-order)
+        # We can use frappe.model.mapper or just guess
+        potential_name = " ".join([p.capitalize() for p in doctype_slug.split("-")])
+        if frappe.db.exists("DocType", potential_name):
+            doctype = potential_name
+            
+        if doctype:
+            context = f"Current Page: {doctype} List/Form"
+            if len(parts) >= 3:
+                docname = parts[2]
+                context += f"\nActive Document: {docname}"
+                # Maybe fetch a snippet of the doc?
+                # doc = frappe.get_doc(doctype, docname)
+                # context += f"\nSnippet: {doc.as_dict()}" 
+            return context
+
+    return f"Current Route: {route}"
 
 def get_common_doctypes():
     """
-    Returns a list of commonly used DocTypes to help the model not hallucinate names.
+    Returns a list of commonly used DocTypes.
     """
-    # This list could be dynamic based on usage or static top 20
     common = [
         "User", "ToDo", "File", "Customer", "Item", "Employee", 
         "Sales Order", "Purchase Order", "Sales Invoice", "Purchase Invoice",
-        "Quotation", "Supplier", "Company",
+        "Quotation", "Supplier", "Company", "Stock Entry", "Delivery Note",
         "OwlAI Agent", "OwlAI Model", "OwlAI Tool", "OwlAI Provider", "OwlAI Settings"
     ]
     return f"Common DocTypes: {', '.join(common)}"
+
+def introspect_doctype(doctype):
+    """
+    Returns schema info for a DocType to help the Agent understand how to query/create it.
+    """
+    if not frappe.db.exists("DocType", doctype):
+        return None
+        
+    meta = frappe.get_meta(doctype)
+    fields = []
+    for f in meta.fields:
+        if not f.hidden:
+            fields.append(f"{f.fieldname} ({f.fieldtype}) - {f.label}")
+            
+    return f"""
+    DocType Schema: {doctype}
+    Description: {meta.description or 'No description'}
+    Fields:
+    {', '.join(fields[:50])}
+    """

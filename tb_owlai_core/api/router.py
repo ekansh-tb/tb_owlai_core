@@ -37,6 +37,11 @@ def get_or_create_conversation(conversation_id=None):
         "status": "Active"
     })
     conv.insert(ignore_permissions=True)
+    
+    # Crucial: Set session_id to the document name to prevent duplication in storage backend
+    conv.session_id = conv.name
+    conv.save(ignore_permissions=True)
+    
     frappe.db.commit()
     return conv
 
@@ -170,89 +175,111 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
     """
     user = frappe.session.user
     
-    conversation = get_or_create_conversation(conversation_id)
-    if route and not conversation.context_route:
-        conversation.context_route = route
-        conversation.save(ignore_permissions=True)
-    
-    _update_conversation_title(conversation, text, None, None)
-
-    context_data = {}
-    if context:
-        try:
-             context_data = json.loads(context)
-        except: pass
-    current_route = route or context_data.get('route')
-    
-    from tb_owlai_core.agno_integrations.main import get_agent
-    
-    additional_context = f"""
-    Current Context:
-    - Route: {current_route or 'Unknown'}
-    - Form Data: {json.dumps(context_data.get('form_data') or {})}
-    - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
-    User: {user}
-    """
+    # Debug log for 500 error diagnosis
+    # frappe.log_error("OWL DEBUG: handle_stream_input called")
     
     try:
-        agent = get_agent(conversation_id=conversation.name)
-    except Exception as e:
-         return Response(f"data: Error: {str(e)}\\n\\n", mimetype='text/event-stream')
-
-    def generate():
-        full_response_text = ""
-        start_time = time.time()
-        status = "Success"
-        error_message = None
-        tool_calls = [] 
+        conversation = get_or_create_conversation(conversation_id)
+        if route and not conversation.context_route:
+            conversation.context_route = route
+            conversation.save(ignore_permissions=True)
         
-        try:
-            # Yield Start Event
-            yield f"event: start\\ndata: {json.dumps({'conversation_id': conversation.name})}\\n\\n"
+        _update_conversation_title(conversation, text, None, None)
 
-            stream = agent.run(text, additional_context=additional_context, stream=True)
-            
-            for chunk in stream:
-                token = ""
-                # Handle RunResponse chunk
-                if hasattr(chunk, "content") and chunk.content:
-                     token = chunk.content
-                elif isinstance(chunk, str):
-                     token = chunk
-                
-                if token:
-                    payload = json.dumps({"token": token})
-                    yield f"data: {payload}\\n\\n"
-                    full_response_text += token
-                
-        except Exception as e:
-            status = "Error"
-            error_message = str(e)
-            yield f"event: error\\ndata: {str(e)}\\n\\n"
-            frappe.log_error(f"Stream Error: {e}")
-            
-        finally:
-            duration = time.time() - start_time
+        context_data = {}
+        if context:
             try:
-                log_analytics(
-                    user=user,
-                    config={},
-                    model=agent.model.id if agent else "Unknown",
-                    response_time=duration,
-                    prompt_tokens=0, 
-                    completion_tokens=len(full_response_text)/4,
-                    total_tokens=0,
-                    status=status,
-                    tool_calls=tool_calls,
-                    full_prompt=text,
-                    full_response=full_response_text,
-                    error_message=error_message
-                )
+                 context_data = json.loads(context)
             except: pass
+        current_route = route or context_data.get('route')
+        
+        from tb_owlai_core.agno_integrations.main import get_agent
+        
+        additional_context = f"""
+        Current Context:
+        - Route: {current_route or 'Unknown'}
+        - Form Data: {json.dumps(context_data.get('form_data') or {})}
+        - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
+        User: {user}
+        """
+        
+        agent = get_agent(conversation_id=conversation.name)
+        
+        def generate():
+            full_response_text = ""
+            start_time = time.time()
+            status = "Success"
+            error_message = None
+            tool_calls = [] 
             
-            yield "event: end\\ndata: [DONE]\\n\\n"
+            try:
+                # Yield Start Event
+                yield f"event: start\ndata: {json.dumps({'conversation_id': conversation.name})}\n\n"
 
-    return Response(generate(), mimetype='text/event-stream')
+                stream = agent.run(text, additional_context=additional_context, stream=True)
+                
+                if stream:
+                    for chunk in stream:
+                        # 1. Capture content tokens
+                        token = ""
+                        if hasattr(chunk, "content") and chunk.content:
+                             token = chunk.content
+                        elif isinstance(chunk, str):
+                             token = chunk
+                        
+                        # 2. Capture Tool Calls if present in this chunk
+                        current_tool_calls = []
+                        if hasattr(chunk, "tools") and chunk.tools:
+                            for t in chunk.tools:
+                                tool_call = {"name": t.tool_name, "parameters": t.tool_args}
+                                tool_calls.append(tool_call) # For analytics
+                                current_tool_calls.append(tool_call)
+
+                        # Yield data
+                        payload = {}
+                        if token: payload["token"] = token
+                        if current_tool_calls: payload["action_data"] = current_tool_calls
+                        
+                        if payload:
+                            yield f"data: {json.dumps(payload)}\n\n"
+                            if token: full_response_text += token
+                
+            except Exception as e:
+                status = "Error"
+                error_message = str(e)
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                frappe.log_error(title="Stream Error", message=traceback.format_exc())
+                
+            finally:
+                duration = time.time() - start_time
+                try:
+                    log_analytics(
+                        user=user,
+                        config={},
+                        model=agent.model.id if agent and agent.model else "Unknown",
+                        response_time=duration,
+                        prompt_tokens=0, 
+                        completion_tokens=len(full_response_text)/4,
+                        total_tokens=0,
+                        status=status,
+                        tool_calls=tool_calls,
+                        full_prompt=text,
+                        full_response=full_response_text,
+                        error_message=error_message
+                    )
+                except: pass
+                
+                yield "event: end\ndata: [DONE]\n\n"
+
+        return Response(generate(), mimetype='text/event-stream')
+        
+    except Exception as top_e:
+        import traceback
+        error_msg = f"Fatal 500 Error in handle_stream_input: {str(top_e)}\n{traceback.format_exc()}"
+        frappe.log_error(title="OwlAI Stream Error", message=error_msg)
+        # Return a Response with error if possible, or re-raise to see it in logs
+        return Response(f"event: error\ndata: {json.dumps({'error': str(top_e)})}\n\n", 
+                        status=500, mimetype='text/event-stream')
 
 
 @frappe.whitelist()
@@ -338,7 +365,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
             # agent_id=settings.default_agent # TODO: Add this to get_agent logic if needed
         )
     except Exception as e:
-         frappe.log_error(f"Agent Definition Error: {str(e)}")
+         frappe.log_error(title="Agent Definition Error", message=traceback.format_exc())
          return {"reply": f"⚠️ Failed to initialize AI Agent: {str(e)}"}
 
     start_time = time.time()
@@ -455,9 +482,12 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
         should_update = True
 
     if title_text and should_update:
-        title = title_text[:50] + "..." if len(title_text) > 50 else title_text
+        # Clean title text
+        title = title_text.strip().split('\n')[0] # Get first line only
+        title = title[:60] + "..." if len(title) > 60 else title
         conversation.title = title
         conversation.save(ignore_permissions=True)
+        frappe.db.commit() # Ensure it's committed immediately for the sidebar to see it
 
 
 @frappe.whitelist()
@@ -518,7 +548,7 @@ def update_conversation_title(conversation_id, title):
         frappe.db.set_value("OwlAI Conversation", conversation_id, "title", title)
         return {"status": "success"}
     except Exception as e:
-        frappe.log_error(f"Error updating title: {e}")
+        frappe.log_error(title="Error updating title", message=traceback.format_exc())
         return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()

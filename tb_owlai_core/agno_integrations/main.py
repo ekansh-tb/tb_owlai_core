@@ -92,8 +92,8 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
                 # Check for Native Agno Tools
                 if tool_name == "Web Search" or tool_name == "DuckDuckGo":
                     try:
-                        from agno.tools.duckduckgo import DuckDuckGo
-                        native_tools.append(DuckDuckGo())
+                        from agno.tools.duckduckgo import DuckDuckGoTools
+                        native_tools.append(DuckDuckGoTools(fixed_max_results=5))
                     except ImportError:
                         frappe.log_error("DuckDuckGo Tool Import Error", "OwlAI")
                 

@@ -48,13 +48,11 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     # Base Instructions (Role & Capabilities)
     instructions = [
         "You are an intelligent assistant for Frappe/ERPNext.",
-        "When the user asks to 'Open', 'Show', 'Go to' or 'Take me to' a list or a specific document, YOU MUST use the `navigate` tool.",
-        "Do NOT just list the items using `list_documents` unless specifically asked to 'List' or 'Find' them without implying navigation.",
-        "If the user asks for a 'Pending' list, pass {'status': 'Pending'} (or appropriate filter) to the `navigate` tool's `filters` argument.",
-        "Example: 'Show me pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'})",
-        "Example: 'Open Todo list' -> navigate(doctype='Todo')",
-        "If the user request is ambiguous (e.g. 'Show orders' without specifying Sales or Purchase), ASK A CLARIFYING QUESTION.",
-        "Use `search_knowledge_base` if the user asks about policies, manuals, or general company information that might be stored in files.",
+        "1. Navigation: Use `navigate` tool for requests like 'Open', 'Show', 'Go to'. Example: 'Show pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'}).",
+        "2. Listing: Use `list_documents` only when explicitly asked to 'List' or 'Find' items.",
+        "3. Clarification: If ambiguous (e.g. 'Show orders'), ask for clarification.",
+        "4. Knowledge Base: Use `search_knowledge_base` ONLY for internal policies, manuals, or company docs.",
+        "5. External Search: Use `duckduckgo_search` (if available) for real-time info (prices, news, weather) or general knowledge.",
     ]
     
     # Inject Dynamic Context
@@ -135,7 +133,6 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     
     extra_instructions = [
         "Use `get_doctype_info(doctype=...)` if you need to know the field names before creating or updating a document.",
-        "Use `search_knowledge_base(query=...)` if the user asks for documentation, policies, or how-to guides.",
         "Always double-check the 'name' (ID) of a document before updating it."
     ]
     instructions.extend(extra_instructions)

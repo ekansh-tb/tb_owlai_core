@@ -13,6 +13,10 @@ class NavigateArgs(BaseModel):
     view: str = Field("List", description="The view type (List, Form, Page, Report, Dashboard, Kanban, Tree).")
     filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset. Use {'name': 'DOC-ID'} for Form view.")
 
+class WebSearchArgs(BaseModel):
+    query: str = Field(..., description="The query to search the internet for.")
+
+
 class ListDocumentsArgs(BaseModel):
     doctype: str = Field(..., description="The DocType to fetch.")
     filters: Optional[Dict[str, Any]] = Field(None, description="Filters as a dictionary.")
@@ -46,6 +50,7 @@ class FrappeToolkit(Toolkit):
             "navigate": self.navigate,
             "search_documents": self.search_documents,
             "search_knowledge_base": self.search_knowledge_base,
+            "web_search": self.web_search,
             "frappe_utils": self.frappe_utils
         }
         
@@ -119,13 +124,39 @@ class FrappeToolkit(Toolkit):
 
         return self._exec("navigate", doctype=doctype, view=view, filters=parsed_filters)
 
-    def list_documents(self, doctype: str, filters: Optional[Union[dict, str]] = None, fields: Optional[Union[list, str]] = None, limit_page_length: int = 20) -> list:
+    def list_documents(self, doctype: str, filters: Optional[Union[dict, str]] = None, fields: Optional[Union[list, str]] = None, limit_page_length: int = 10) -> List[str]:
         """
         Fetch a list of documents for a given DocType.
+        Returns a human-readable list of strings to save tokens and avoid raw JSON spam.
         """
         parsed_filters = self._parse_dict(filters)
         parsed_fields = self._parse_list(fields)
-        return self._exec("list_documents", doctype=doctype, filters=parsed_filters, fields=parsed_fields, limit_page_length=limit_page_length)
+        
+        # Determine "Smart Fields" if not provided
+        if not parsed_fields:
+            if doctype == "Sales Order": parsed_fields = ["name", "customer", "grand_total", "status"]
+            elif doctype == "Task": parsed_fields = ["name", "subject", "status", "priority", "exp_end_date"]
+            elif doctype == "ToDo": parsed_fields = ["name", "description", "status"]
+            else: parsed_fields = ["name"] # Fallback
+            
+        docs = self._exec("list_documents", doctype=doctype, filters=parsed_filters, fields=parsed_fields, limit_page_length=limit_page_length)
+        
+        # Format as Strings
+        results = []
+        if isinstance(docs, list):
+            for d in docs:
+                # Create a concise summary string
+                # e.g. "SO-001 | Customer A | $500 | Pending"
+                if isinstance(d, dict):
+                     parts = [str(d.get(f, "")).strip() for f in parsed_fields if d.get(f)]
+                     results.append(" | ".join(parts))
+                else:
+                    results.append(str(d))
+        
+        if not results:
+            return ["No documents found."]
+            
+        return results
 
 
     def search_documents(self, query: str, doctype: Optional[str] = None) -> list:
@@ -143,6 +174,35 @@ class FrappeToolkit(Toolkit):
             return search_knowledge_base(query)
         except Exception as e:
             return [f"Error searching knowledge base: {e}"]
+    
+    def web_search(self, query: str) -> str:
+        """
+        Search the web for real-time information.
+        Returns a summarized markdown string.
+        """
+        try:
+            from agno.tools.duckduckgo import DuckDuckGoTools
+            ddg = DuckDuckGoTools(fixed_max_results=5)
+            # DuckDuckGoTools usually has 'duckduckgo_search' method or similar
+            # But Agno Toolkit wrappers might differ. 
+            # Let's inspect how Agno does it or just use the library directly if easier.
+            # safe option: use the library directly if installed, or the tool
+            
+            try:
+                from duckduckgo_search import DDGS
+                results = DDGS().text(query, max_results=5)
+                if not results:
+                    return "No results found."
+                
+                md_output = "### Search Results\n"
+                for i, r in enumerate(results, 1):
+                    md_output += f"{i}. **[{r.get('title', 'Link')}]({r.get('href', '#')})**\n   {r.get('body', '')}\n\n"
+                return md_output
+            except ImportError:
+                 return "DuckDuckGo Search library not installed."
+                 
+        except Exception as e:
+            return f"Error performing web search: {e}"
         
     def get_document(self, doctype: str, name: str) -> dict:
         """

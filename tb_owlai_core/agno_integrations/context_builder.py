@@ -74,30 +74,33 @@ def get_route_context(route):
     
     parts = route.strip("/").split("/")
     
-    # Heuristics
+    # Human-readable context
     if len(parts) >= 2 and parts[0] == "app":
-        doctype_slug = parts[1]
+        slug = parts[1]
         
-        # Try to map slug to DocType
-        # This is a best guess, Frappe usually maps slug to name
-        # But we can try to find a DocType that matches
+        # 1. Try to find DocType
         doctype = None
+        # Try direct match or title case
+        candidates = [slug, slug.replace("-", " ").title(), slug.title()]
+        for c in candidates:
+             if frappe.db.exists("DocType", c):
+                 doctype = c
+                 break
         
-        # Exact match check first (e.g. Sales Order -> sales-order)
-        # We can use frappe.model.mapper or just guess
-        potential_name = " ".join([p.capitalize() for p in doctype_slug.split("-")])
-        if frappe.db.exists("DocType", potential_name):
-            doctype = potential_name
-            
         if doctype:
-            context = f"Current Page: {doctype} List/Form"
-            if len(parts) >= 3:
+            if len(parts) == 3:
                 docname = parts[2]
-                context += f"\nActive Document: {docname}"
-                # Maybe fetch a snippet of the doc?
-                # doc = frappe.get_doc(doctype, docname)
-                # context += f"\nSnippet: {doc.as_dict()}" 
-            return context
+                if docname.lower() == "new-" + slug:
+                     return f"User is creating a new {doctype}."
+                return f"User is currently viewing the {doctype}: {docname}."
+            elif len(parts) == 2:
+                if "report" in slug:
+                    return f"User is viewing a Report: {slug}."
+                return f"User is viewing the List of {doctype}."
+
+    elif len(parts) >= 1:
+        # Generic pages like 'workspace/Home'
+        return f"User is currently on the page: {'/'.join(parts)}."
 
     return f"Current Route: {route}"
 

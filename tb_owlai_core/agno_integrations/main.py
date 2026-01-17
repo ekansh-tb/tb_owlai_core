@@ -48,11 +48,11 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     # Base Instructions (Role & Capabilities)
     instructions = [
         "You are an intelligent assistant for Frappe/ERPNext.",
-        "1. Navigation: Use `navigate` tool for requests like 'Open', 'Show', 'Go to'. Example: 'Show pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'}).",
-        "2. Listing: Use `list_documents` only when explicitly asked to 'List' or 'Find' items.",
-        "3. Clarification: If ambiguous (e.g. 'Show orders'), ask for clarification.",
-        "4. Knowledge Base: Use `search_knowledge_base` ONLY for internal policies, manuals, or company docs.",
-        "5. External Search: Use `duckduckgo_search` (if available) for real-time info or general knowledge. USE IT DIRECTLY without asking if the query requires it.",
+        "1. Context Awareness: You are aware of the user's current screen (Route/DocType). Use this context to answer questions like 'What is the status of this document?' implicitly.",
+        "2. Navigation: Use `navigate` tool for requests like 'Open', 'Show', 'Go to'. Example: 'Show pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'}).",
+        "3. Listing: Use `list_documents` to find multiple items. It returns specific strings like 'ID | Customer | Status'.",
+        "4. Web Search: Use `web_search` for real-time info (stock prices, news, general queries). It returns a ready-to-display Markdown summary.",
+        "5. Knowledge Base: Use `search_knowledge_base` for internal policies or manuals.",
         "6. CONCISENESS: Reply in a very concise, short, and to-the-point manner. Avoid verbose explanations.",
         "7. NO NARRATION: Do not narrate your actions (e.g. 'I will now search...'). Just execute the tool.",
         "8. NO RAW JSON: Do not output the JSON schema of tool calls in your text response. Use the tool execution channel.",
@@ -60,11 +60,12 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     
     # Inject Dynamic Context
     try:
-        if conversation_id:
-             # Try to get route from conversation doc if available, or pass it in? 
-             # Ideally get_agent should accept 'route' argument if possible, or we rely on stored context.
-             # For now, let's inject System/Company/User context which is stable.
-             pass
+        
+        # Inject Route Context if provided via factory or if we can infer it
+        # NOTE: 'additional_context' is often passed to agent.run() at runtime, 
+        # but we can try to fetch a broad context here if possible. 
+        # For now, we trust the runtime injection in router.py, but we ensure instructions emphasize using it.
+        pass
              
         instructions.append(context_builder.get_system_context())
         instructions.append(context_builder.get_company_context())
@@ -90,25 +91,13 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
             if t.enabled:
                 tool_name = t.tool # Name of the OwlAI Tool document
                 
-                # Check for Native Agno Tools
-                if tool_name == "Web Search" or tool_name == "DuckDuckGo":
-                    try:
-                        from agno.tools.duckduckgo import DuckDuckGoTools
-                        native_tools.append(DuckDuckGoTools(fixed_max_results=5))
-                    except ImportError:
-                        frappe.log_error("DuckDuckGo Tool Import Error", "OwlAI")
-                
-                elif tool_name == "Exa Search":
-                    try:
-                        from agno.tools.exa import ExaTools
-                        # api_key should be in environment or passed
-                        # Assuming env var EXA_API_KEY is set or we fetch from settings
-                        native_tools.append(ExaTools())
-                    except:
-                         pass
-                         
+                if tool_name in ["Web Search", "DuckDuckGo", "Exa Search"]:
+                    # We now use the safe `web_search` method in FrappeToolkit for all these
+                    # So we just ensure 'web_search' is in the list for FrappeToolkit
+                    frappe_tools.append("web_search")
                 else:
                     # Assume it's a Frappe Toolkit tool
+                    # Map standard names if needed, or pass directly
                     frappe_tools.append(tool_name)
     
     # Always include FrappeToolkit (generic) if no specific tools selected, 

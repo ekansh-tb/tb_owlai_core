@@ -470,14 +470,18 @@ class OwlMount {
             const decoder = new TextDecoder();
             loadingDiv.remove();
 
-            let fullText = "";
+            let buffer = "";
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n\n');
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                const lines = buffer.split('\n\n');
+                // The last element is either empty (if chunk ended with \n\n) or incomplete
+                buffer = lines.pop();
 
                 for (const line of lines) {
                     if (line.trim().startsWith('data: ')) {
@@ -509,7 +513,11 @@ class OwlMount {
                                 }
                                 contentDiv.scrollTop = contentDiv.scrollHeight;
                             }
-                        } catch (e) { }
+                        } catch (e) {
+                            console.warn("OwlAI: Failed to parse SSE data", e);
+                        }
+                    } else if (line.trim().startsWith('event: error')) {
+                        // Handle error event if needed, though we now yield friendly errors as text
                     }
                 }
             }

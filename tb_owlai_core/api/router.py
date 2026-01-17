@@ -247,6 +247,11 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
             except Exception as e:
                 status = "Error"
                 error_message = str(e)
+                # Yield error as a normal token so it appears in the chat UI
+                friendly_error = f"\n\n**I encountered an error:** {str(e)}\nPlease check the logs or try again."
+                yield f"data: {json.dumps({'token': friendly_error})}\n\n"
+                
+                # Also yield the actual error event for checking
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 frappe.log_error(title="Stream Error", message=traceback.format_exc())
                 

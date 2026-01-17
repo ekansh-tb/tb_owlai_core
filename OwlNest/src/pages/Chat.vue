@@ -13,14 +13,14 @@
         </div>
 
         <!-- History List -->
-        <div class="flex-1 overflow-auto px-4 py-4 space-y-2 custom-scrollbar">
+        <div class="flex-1 overflow-auto px-4 py-4 space-y-1.5 custom-scrollbar">
             <div v-for="conv in conversations.data" :key="conv.name"
-                 class="group relative p-3.5 rounded-2xl cursor-pointer text-sm transition-all border border-transparent flex justify-between items-start"
-                 :class="currentConvId === conv.name ? 'bg-white/[0.08] text-white border-white/5 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:translate-x-1'"
+                 class="group relative p-3 rounded-xl cursor-pointer text-sm transition-all border border-transparent flex justify-between items-center"
+                 :class="currentConvId === conv.name ? 'bg-white/[0.08] text-white border-white/5 shadow-inner' : 'text-gray-400 hover:bg-white/5'"
                  @click="loadConversation(conv.name)">
                  <div class="flex-1 min-w-0 pr-2">
-                    <div class="truncate font-medium">{{ conv.title || 'New Conversation' }}</div>
-                    <div class="text-[10px] text-gray-600 mt-1 font-mono uppercase tracking-widest flex items-center gap-1.5">
+                    <div class="truncate font-medium text-[13px] group-hover:text-white transition-colors">{{ conv.title || 'New Conversation' }}</div>
+                    <div class="text-[9px] text-gray-600 mt-1 font-mono uppercase tracking-widest flex items-center gap-1.5 opacity-60">
                         <Clock class="w-2.5 h-2.5" />
                         {{ formatDate(conv.modified) }}
                     </div>
@@ -28,7 +28,7 @@
                  <button @click.stop="deleteConversation(conv.name)" 
                          class="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1.5 -mr-1"
                          title="Delete Conversation">
-                     <Trash2 class="w-4 h-4" />
+                     <Trash2 class="w-3.5 h-3.5" />
                  </button>
             </div>
         </div>
@@ -106,9 +106,9 @@
                   <User v-if="msg.role === 'user'" class="w-5 h-5 text-white" />
                   <Bot v-else-if="msg.role === 'assistant'" class="w-6 h-6 text-[#41d1ff]" />
                </div>
-               <div class="max-w-[80%] space-y-2">
+               <div class="max-w-[85%] space-y-2">
                    <div class="rounded-[24px] px-6 py-5 shadow-2xl relative transition-all"
-                        :class="msg.role === 'user' ? 'bg-[#bd34fe]/10 text-white border border-[#bd34fe]/20 rounded-tr-sm' : 'bg-white/[0.03] text-gray-200 border border-white/10 rounded-tl-sm'">
+                        :class="msg.role === 'user' ? 'bg-[#bd34fe]/15 text-white border border-[#bd34fe]/30 rounded-tr-sm' : 'bg-white/[0.05] text-gray-100 border border-white/10 rounded-tl-sm'">
                       
                       <!-- Edit Button for User Message -->
                        <button v-if="msg.role === 'user'" 
@@ -124,7 +124,7 @@
                              <span>Action Dispatched</span>
                           </div>
                           <div class="mt-2 font-mono text-[11px] text-emerald-400/80 bg-black/40 p-3 rounded-xl border border-emerald-500/10 group-hover:bg-black/60 transition-all">
-                              <div v-for="action in parseActionData(msg.content)" :key="action.name" class="space-y-1">
+                              <div v-for="action in parseActionData(msg)" :key="action.name" class="space-y-1">
                                   <div class="flex items-center gap-2">
                                       <span class="text-emerald-500 font-bold">{{ action.name }}</span>
                                       <span class="text-gray-600">-></span>
@@ -282,7 +282,6 @@ const conversations = createResource({
 const chat = createResource({
     url: 'tb_owlai_core.api.router.handle_input_v2',
     onSuccess(data) {
-        if (data.reply) messages.value.push({ role: 'assistant', content: data.reply, message_type: 'text', creation: new Date().toISOString() })
         if (data.action_data) {
             messages.value.push({ 
                 role: 'assistant', 
@@ -293,6 +292,7 @@ const chat = createResource({
             })
             handleAction(data.action_data)
         }
+        if (data.reply) messages.value.push({ role: 'assistant', content: data.reply, message_type: 'text', creation: new Date().toISOString() })
         if (data.conversation_id && !currentConvId.value) {
             currentConvId.value = data.conversation_id
             conversations.reload()
@@ -372,26 +372,42 @@ function quickAction(text) {
     sendMessage()
 }
 
+
 function handleAction(action_data) {
     const tools = Array.isArray(action_data) ? action_data : [action_data]
     tools.forEach(tool => {
+        const actionName = tool.name || tool.tool_name
+        const actionParams = tool.parameters || tool.tool_args || tool.arguments || {}
+        if (!actionName) return
+
         bridge.send('EXECUTE_ACTION', {
-            action: tool.name === 'navigate' ? 'navigate' : tool.name,
-            ...tool.parameters
+            action: actionName === 'navigate' ? 'navigate' : actionName,
+            ...actionParams
         })
     })
 }
 
-function parseActionData(content) {
+function parseActionData(msg) {
+    if (!msg) return []
+    // 1. Try to use action_data object directly if available
+    if (msg.action_data) {
+        const tools = Array.isArray(msg.action_data) ? msg.action_data : [msg.action_data]
+        return tools.map(t => ({
+            name: t.name || t.tool_name || 'Action',
+            parameters: JSON.stringify(t.parameters || t.arguments || t.tool_args || {})
+        }))
+    }
+    
+    // 2. Fallback to parsing content string
     try {
-        const data = JSON.parse(content)
+        const data = JSON.parse(msg.content)
         const tools = Array.isArray(data) ? data : [data]
         return tools.map(t => ({
-            name: t.name || 'Unknown Action',
-            parameters: JSON.stringify(t.parameters || t.arguments || {})
+            name: t.name || t.tool_name || 'Action',
+            parameters: JSON.stringify(t.parameters || t.arguments || t.tool_args || {})
         }))
     } catch (e) {
-        return [{ name: 'Action Error', parameters: content }]
+        return [{ name: 'Action Error', parameters: msg.content || '' }]
     }
 }
 

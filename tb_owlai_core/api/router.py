@@ -373,7 +373,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     error_message = None
     
     try:
-        # Run Agno Agent
+        # Run OwlAi Agent
         # We pass the user Query (text) and context
         
         # Handling images if supported by Agno (TODO: Check Image artifact support in get_agent config)
@@ -415,7 +415,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     except Exception as e:
         status = "Error"
         error_message = str(traceback.format_exc())
-        frappe.log_error("OwlAI Agno Agent Error")
+        frappe.log_error("OwlAI OwlAi Agent Error")
         result = {"reply": f"An error occurred: {str(e)}"}
         response = None
         
@@ -462,7 +462,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     return result
 
 def _update_conversation_title(conversation, text, image_file, audio_file):
-    """Helper to name the conversation"""
+    """Helper to name the conversation, including context where possible"""
     title_text = text or ""
     if not title_text.strip():
         if image_file: title_text = "Image Analysis"
@@ -472,22 +472,27 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
     should_update = False
     if not conversation.title:
         should_update = True
-    elif conversation.title == conversation.name: # Title equals ID
+    elif conversation.title == conversation.name:
         should_update = True
     elif conversation.title.startswith("Conversation "):
         should_update = True
-    elif "OWL-CONV-" in conversation.title: # Catches "Chat OWL-CONV-..." or raw ID
+    elif "OWL-CONV-" in conversation.title:
         should_update = True
     elif conversation.title == "New Conversation":
         should_update = True
 
     if title_text and should_update:
         # Clean title text
-        title = title_text.strip().split('\n')[0] # Get first line only
+        title = title_text.strip().split('\n')[0]
         title = title[:60] + "..." if len(title) > 60 else title
+        
+        # Add contextual suffix if it's a generic command
+        if conversation.context_route and " " not in title:
+             title = f"{title} ({conversation.context_route.split('/')[-1]})"
+
         conversation.title = title
         conversation.save(ignore_permissions=True)
-        frappe.db.commit() # Ensure it's committed immediately for the sidebar to see it
+        frappe.db.commit()
 
 
 @frappe.whitelist()

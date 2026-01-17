@@ -42,7 +42,7 @@ class OwlAgent:
             if frappe.db.exists("OwlAI Conversation", conversation_name):
                 self.conversation = frappe.get_doc("OwlAI Conversation", conversation_name)
         
-        # Setup Agno Agent
+        # Setup OwlAi Agent
         self.agno_agent = self._setup_agno_agent()
 
     def _resolve_config(self) -> Dict[str, Any]:
@@ -71,7 +71,7 @@ class OwlAgent:
         }
 
     def _setup_agno_agent(self) -> Agent:
-        """Configures and returns the Agno Agent instance."""
+        """Configures and returns the OwlAi Agent instance."""
         # 1. Select Model
         model = None
         provider = self.config.get("provider", "ollama")
@@ -172,7 +172,7 @@ class OwlAgent:
         # 1. Load History
         history = self._get_history_messages()
         
-        # 2. Run Agno Agent
+        # 2. Run OwlAi Agent
         try:
             # Save User Message first if provided
             if user_message:

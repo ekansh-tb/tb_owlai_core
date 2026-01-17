@@ -9,7 +9,7 @@ import json
 
 class FrappeStorage(BaseDb):
     """
-    Storage backend for Agno Agents using Frappe DocTypes:
+    Storage backend for OwlAi Agents using Frappe DocTypes:
     - OwlAI Conversation (Sessions)
     - OwlAI User Memory (Memories)
     - OwlAI Knowledge Item (Knowledge)
@@ -142,8 +142,12 @@ class FrappeStorage(BaseDb):
                  except: pass
 
             message_type = "text"
-            if action_data:
+            if action_data and action_data != "[]":
                 message_type = "action"
+                # If content is empty (typical for tool call messages), use action_data as content
+                # for backward compatibility and frontend rendering.
+                if not content:
+                    content = action_data
 
             doc.append("messages", {
                 "role": msg.role,

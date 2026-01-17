@@ -36,18 +36,25 @@ export class Bridge {
     }
 
     handleStandaloneNavigation(payload) {
-         // Standalone navigation fallback
-         // Note: Frappe Router might need to be available or we open new tabs
-         if (payload.action === 'navigate') {
-             // If we are in standalone OwlNest, we might not have full Desk context.
-             // Best effort: Open in new tab or use window.location if it's a known public route.
-             const baseUrl = window.location.origin;
-             let targetUrl = `${baseUrl}/app/${payload.doctype.toLowerCase().replace(/ /g, '-')}`;
-             if (payload.name) {
-                 targetUrl += `/${payload.name}`;
-             }
-             window.open(targetUrl, '_blank');
-         }
+        // Standalone navigation fallback
+        if (payload.action === 'navigate' || payload.name === 'navigate') {
+            const baseUrl = window.location.origin;
+            const doctype = payload.doctype;
+            if (!doctype) return;
+
+            // Frappe route for doctype list is /app/doctype (kebab-case)
+            let slug = doctype.toLowerCase().replace(/ /g, '-');
+            let targetUrl = `${baseUrl}/app/${slug}`;
+
+            // Check if it's a specific document (Form view)
+            const docname = payload.docname || (payload.filters && (payload.filters.name || payload.filters.id));
+
+            if (docname) {
+                targetUrl += `/${docname}`;
+            }
+
+            window.open(targetUrl, '_blank');
+        }
     }
 }
 

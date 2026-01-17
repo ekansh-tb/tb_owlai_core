@@ -3,7 +3,7 @@ import frappe
 from tb_owlai_core.agno_integrations.main import get_agent
 
 def test_agno_agent():
-    print("--- Testing Agno Agent Integration ---")
+    print("--- Testing OwlAi Agent Integration ---")
     
     # 1. Create a dummy conversation
     conv = frappe.new_doc("OwlAI Conversation")

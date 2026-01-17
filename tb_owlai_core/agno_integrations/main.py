@@ -11,7 +11,7 @@ from tb_owlai_core.agno_integrations.model_factory import get_model_instance
 
 def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=True):
     """
-    Factory to create an Agno Agent instance configured with Frappe context.
+    Factory to create an OwlAi Agent instance configured with Frappe context.
     
     Args:
         conversation_id (str): The OwlAI Conversation ID (Storage Session ID).
@@ -19,7 +19,7 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
         model_id (str): Optional override for the model.
         
     Returns:
-        Agent: Configured Agno Agent.
+        Agent: Configured OwlAi Agent.
     """
     
     # 1. Load Settings & Defaults

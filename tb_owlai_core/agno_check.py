@@ -7,11 +7,11 @@ try:
 except ImportError:
     print("Agno is NOT installed.")
 
-# Simulate how an Agno agent might look if it were installed
+# Simulate how an OwlAi Agent might look if it were installed
 # implementation_plan.md mentioned Agno has a specific structure.
 
 def simulate_agno_agent():
-    print("\nSimulating Agno Agent Structure:")
+    print("\nSimulating OwlAi Agent Structure:")
     print("""
 from agno.agent import Agent
 from agno.models.ollama import Ollama

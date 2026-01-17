@@ -212,19 +212,64 @@ class OwlMount {
             .hidden { display: none !important; }
 
             /* Markdown Styling */
+            .owl-content h1, .owl-content h2, .owl-content h3 { color: #fff; margin: 16px 0 8px; font-weight: 700; }
+            .owl-content h1 { font-size: 1.5em; }
+            .owl-content h2 { font-size: 1.3em; }
+            .owl-content h3 { font-size: 1.1em; }
+            
+            .owl-content p { margin-bottom: 12px; }
+            
+            .owl-content ul, .owl-content ol { 
+                margin: 12px 0; 
+                padding-left: 20px; 
+                color: rgba(255, 255, 255, 0.8);
+            }
+            .owl-content li { margin-bottom: 6px; }
+            
             .owl-content pre {
-                background: #111;
+                background: #000;
                 padding: 16px;
                 border-radius: 12px;
-                margin: 12px 0;
+                margin: 16px 0;
                 border: 1px solid rgba(255,255,255,0.08);
                 overflow-x: auto;
             }
             .owl-content code {
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-size: 0.9em;
+                font-size: 0.85em;
                 color: #41d1ff;
+                background: rgba(65, 209, 255, 0.1);
+                padding: 2px 6px;
+                border-radius: 4px;
             }
+            .owl-content pre code {
+                background: transparent;
+                padding: 0;
+                color: #e2e8f0;
+            }
+            
+            .owl-content table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 16px 0;
+                font-size: 0.9em;
+            }
+            .owl-content th, .owl-content td {
+                padding: 10px;
+                border: 1px solid rgba(255,255,255,0.06);
+                text-align: left;
+            }
+            .owl-content th { background: rgba(255,255,255,0.04); font-weight: 600; }
+            
+            .owl-content strong { color: #fff; font-weight: 600; }
+            .owl-content blockquote {
+                border-left: 4px solid #bd34fe;
+                padding-left: 16px;
+                margin: 16px 0;
+                color: rgba(255,255,255,0.6);
+                font-style: italic;
+            }
+            
             .owl-content a { color: #bd34fe; text-decoration: none; border-bottom: 1px solid transparent; transition: border 0.3s; }
             .owl-content a:hover { border-bottom: 1px solid #bd34fe; }
         `;
@@ -432,11 +477,11 @@ class OwlMount {
                 if (done) break;
 
                 const chunk = decoder.decode(value);
-                const lines = chunk.split('\\n\\n');
+                const lines = chunk.split('\n\n');
 
                 for (const line of lines) {
-                    if (line.includes('data: ')) {
-                        const dataStr = line.substring(line.indexOf('data: ') + 6).trim();
+                    if (line.trim().startsWith('data: ')) {
+                        const dataStr = line.replace('data: ', '').trim();
                         if (dataStr === '[DONE]') break;
 
                         try {
@@ -476,12 +521,14 @@ class OwlMount {
         if (action.name === 'navigate') {
             const params = action.parameters || {};
             if (params.doctype) {
-                if (params.docname) {
-                    frappe.set_route('Form', params.doctype, params.docname);
-                } else if (params.filters) {
-                    // Navigate to list with filters if possible
-                    frappe.set_route('List', params.doctype, params.filters);
+                const docname = params.docname || (params.filters && (params.filters.name || params.filters.id));
+                if (docname) {
+                    frappe.set_route('Form', params.doctype, docname);
                 } else {
+                    if (params.filters) {
+                        // Correct way to pass filters to a list in Frappe
+                        frappe.route_options = params.filters;
+                    }
                     frappe.set_route('List', params.doctype);
                 }
                 this.toggle(false); // Close spotlight on navigation

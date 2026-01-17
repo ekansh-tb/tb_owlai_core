@@ -7,6 +7,7 @@
 class OwlMount {
     constructor() {
         this.is_open = false;
+        this.is_minimized = false;
         this.mount_point_id = "owl-spotlight-wrapper";
         this.conversation_id = null;
         this.markdown_loaded = false;
@@ -62,6 +63,29 @@ class OwlMount {
                 pointer-events: auto;
             }
             
+            /* Minimized State */
+            #owl-spotlight-wrapper.minimized {
+                background: rgba(0, 0, 0, 0);
+                backdrop-filter: none;
+                pointer-events: none;
+                justify-content: flex-end;
+                align-items: flex-end;
+                padding-top: 0;
+            }
+            
+            #owl-spotlight-wrapper.minimized #owl-spotlight-modal {
+                width: 420px;
+                max-height: 600px;
+                margin: 20px;
+                pointer-events: auto;
+                transform: translateY(0);
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            }
+            
+            #owl-spotlight-wrapper.minimized .owl-spotlight-glow {
+                display: none;
+            }
+
             /* The Vite Glow Effect */
             .owl-spotlight-glow {
                 position: absolute;
@@ -331,6 +355,9 @@ class OwlMount {
                          <button class="owl-action-btn" id="owl-btn-expand" title="Open Dashboard (Ctrl+Shift+O)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
                         </button>
+                        <button class="owl-action-btn" id="owl-btn-minimize" title="Minimize">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
                         <button class="owl-action-btn" id="owl-btn-close" title="Dismiss (Esc)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
@@ -349,6 +376,7 @@ class OwlMount {
 
         document.getElementById('owl-input').addEventListener('keydown', (e) => this.handle_input(e));
         document.getElementById('owl-btn-close').addEventListener('click', () => this.toggle(false));
+        document.getElementById('owl-btn-minimize').addEventListener('click', () => this.minimize());
         document.getElementById('owl-backdrop').addEventListener('click', () => this.toggle(false));
         document.getElementById('owl-btn-expand').addEventListener('click', () => {
             // Fix: Open correct route in new tab using hash routing
@@ -362,19 +390,52 @@ class OwlMount {
         const input = document.getElementById('owl-input');
 
         const nextState = typeof forceState !== 'undefined' ? forceState : !this.is_open;
+
+        // If we are currently minimized and trying to open, just maximize
+        if (this.is_minimized && nextState) {
+            this.maximize();
+            return;
+        }
+
         this.is_open = nextState;
+
+        // Reset minimized state on close/fresh open logic unless explicitly handling maximize/minimize
+        if (!this.is_open) {
+            this.is_minimized = false;
+        }
 
         if (this.is_open) {
             wrapper.classList.remove('hidden');
             setTimeout(() => {
                 wrapper.classList.add('active');
-                input.focus();
+                if (!this.is_minimized) {
+                    input.focus();
+                }
             }, 10);
         } else {
             wrapper.classList.remove('active');
+            wrapper.classList.remove('minimized'); // Ensure clean state
             setTimeout(() => {
                 if (!this.is_open) wrapper.classList.add('hidden');
             }, 400);
+        }
+    }
+
+    minimize() {
+        const wrapper = document.getElementById(this.mount_point_id);
+        if (wrapper && this.is_open) {
+            this.is_minimized = true;
+            wrapper.classList.add('minimized');
+        }
+    }
+
+    maximize() {
+        const wrapper = document.getElementById(this.mount_point_id);
+        const input = document.getElementById('owl-input');
+        if (wrapper && this.is_open) {
+            this.is_minimized = false;
+            wrapper.classList.remove('minimized');
+            setTimeout(() => input.focus(), 300);
         }
     }
 
@@ -471,6 +532,7 @@ class OwlMount {
             loadingDiv.remove();
 
             let buffer = "";
+            let fullText = ""; /* Fixed: Initialize fullText */
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -557,7 +619,7 @@ class OwlMount {
                         frappe.set_route('List', params.doctype);
                     }
                 }
-                this.toggle(false); // Close spotlight on navigation
+                this.minimize(); // Usage: Minimize instead of close
             }
         }
     }

@@ -46,16 +46,14 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     from tb_owlai_core.agno_integrations import context_builder
     
     # Base Instructions (Role & Capabilities)
+    # Base Instructions (Role & Capabilities)
     instructions = [
         "You are an intelligent assistant for Frappe/ERPNext.",
-        "1. Context Awareness: You are aware of the user's current screen (Route/DocType). Use this context to answer questions like 'What is the status of this document?' implicitly.",
-        "2. Navigation: Use `navigate` tool for requests like 'Open', 'Show', 'Go to'. Example: 'Show pending Sales Orders' -> navigate(doctype='Sales Order', filters={'status': 'Pending'}).",
-        "3. Listing: Use `list_documents` to find multiple items. It returns specific strings like 'ID | Customer | Status'.",
-        "4. Web Search: Use `web_search` for real-time info (stock prices, news, general queries). It returns a ready-to-display Markdown summary.",
-        "5. Knowledge Base: Use `search_knowledge_base` for internal policies or manuals.",
-        "6. CONCISENESS: Reply in a very concise, short, and to-the-point manner. Avoid verbose explanations.",
-        "7. NO NARRATION: Do not narrate your actions (e.g. 'I will now search...'). Just execute the tool.",
-        "8. NO RAW JSON: Do not output the JSON schema of tool calls in your text response. Use the tool execution channel.",
+        "CORE PRINCIPLE: TO HELP users by executing ACTIONS. ALWAYS prefer tools over text.",
+        "NAVIGATION: For 'Go to', 'Open', 'Show', 'List' requests, use the `navigate` or `maps` tool. DO NOT NARRATE (e.g., don't say 'Navigating...'). JUST EXECUTE.",
+        "QUERIES: Use `list_documents` only if the user asks for data/stats (e.g. 'Show me top 5...').",
+        "NO HALLUCINATION: Do not make up IDs or data.",
+        "CONTEXT: Use the provided Route/DocType context."
     ]
     
     # Inject Dynamic Context
@@ -75,7 +73,10 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
         frappe.log_error(f"Context Build Error: {e}")
 
     if agent_doc and agent_doc.system_prompt:
-        instructions.append(agent_doc.system_prompt)
+        if "OVERRIDE" in agent_doc.system_prompt:
+            instructions = [agent_doc.system_prompt.replace("OVERRIDE", "").strip()]
+        else:
+            instructions.append(agent_doc.system_prompt)
         
 
 

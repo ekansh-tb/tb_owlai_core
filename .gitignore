@@ -8,6 +8,8 @@ dist/
 venv/
 env/
 *.pyc
+yarn.lock
+package-lock.json
 
 # Distribution / binding artifacts
 bin/

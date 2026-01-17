@@ -4,64 +4,64 @@ import frappe
 from tb_owlai_core.plugins.base import BaseTool
 
 class NavigateSchema(BaseModel):
-    doctype: str = Field(..., description="The DocType to navigate to (e.g. Sales Order, Task, Item).")
-    view: Optional[str] = Field("List", description="The view type (List, Report, Dashboard, Kanban, Tree).", enum=["List", "Report", "Dashboard", "Kanban", "Tree"])
+    doctype: str = Field(..., description="The DocType or Page name to navigate to (e.g. 'Sales Order', 'Workspaces', 'Dashboard').")
+    docname: Optional[str] = Field(None, description="The specific document ID/name to open (e.g. 'SO-001').")
+    view: Optional[str] = Field("List", description="The view type (List, Form, Report, Dashboard, Kanban, Tree).")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply to the list view.")
 
 class NavigateTool(BaseTool):
     def __init__(self):
         super().__init__()
         self.name = "navigate"
-        self.description = "Navigate the user to a specific DocType list or page in the Frappe Desk. Use this when the user asks to 'Show' or 'Go to' a list or page."
+        self.description = "Navigate the user to a specific DocType (List/Form), standard Page, Report, or Dashboard in Frappe Desk. Use this for 'Show', 'Open', 'Go to' commands."
         self.category = "Navigation"
         self.args_schema = NavigateSchema
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         target = arguments.get("doctype")
         view = arguments.get("view", "List")
+        docname = arguments.get("docname")
+        filters = arguments.get("filters")
         
         if not target:
             return {"error": "Target DocType or Page name is required."}
 
-        # Fuzzy Search / Logic (borrowed from Maps tool)
-        search_target = target
+        # Fuzzy Search logic
         found_doctype = None
-        
-        # 1. Exact DocType Match
-        if frappe.db.exists("DocType", search_target):
-            found_doctype = search_target
+        if frappe.db.exists("DocType", target):
+            found_doctype = target
         else:
-            # 2. Heuristic Cleaning
-            clean_name = search_target.replace(" List", "").replace(" Page", "")
+            clean_name = target.replace(" List", "").replace(" Page", "")
             if frappe.db.exists("DocType", clean_name):
                  found_doctype = clean_name
             else:
-                 # 3. Fuzzy Match DocType
                  fuzzy = frappe.db.get_value("DocType", {"name": ["like", f"%{clean_name}%"]}, "name")
-                 if fuzzy:
-                     found_doctype = fuzzy
-
-        final_view = view
-        final_target = target
+                 if fuzzy: found_doctype = fuzzy
 
         if found_doctype:
-            # It is a DocType
-            final_target = found_doctype
-            if not frappe.has_permission(final_target, "read"):
-                return {"message": f"I cannot navigate to {final_target} because you do not have read permissions for it."}
+            target = found_doctype
+            if not frappe.has_permission(target, "read"):
+                return {"message": f"I cannot navigate to {target} because you do not have permission."}
+            # If docname is provided, it's definitely a Form view
+            if docname:
+                view = "Form"
         
-        elif frappe.db.exists("Page", search_target):
-            # It is an exact Page match
-            final_view = "Page"
-            final_target = search_target
+        elif frappe.db.exists("Page", target):
+            view = "Page"
         
-        else:
-             return {"error": f"'{target}' not found. Please provide a valid DocType or Page name."}
-
-        # 3. Return Action for Client
-        return {
-            "action": "navigate",  # Signals owl_chat.js to call frappe.set_route
-            "message": f"Navigating to {target}...",
-            "doctype": final_target, # Frontend uses this as the route target
-            "view": final_view,
-            "filters": arguments.get("filters")
+        # Return Action for Client
+        result = {
+            "action": "navigate",
+            "message": f"Navigation action dispatched to frontend for '{target}'. The user has been redirected. STOP generating text.",
+            "doctype": target,
+            "docname": docname,
+            "view": view,
+            "filters": filters
         }
+        
+        # Side-channel to router.py
+        if not hasattr(frappe.local, 'owlai_actions'):
+            frappe.local.owlai_actions = []
+        frappe.local.owlai_actions.append(result)
+        
+        return result

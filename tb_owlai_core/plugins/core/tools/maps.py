@@ -45,11 +45,18 @@ class Maps(BaseTool):
             return {"error": f"Insufficient permissions for {doctype}"}
 
         # Construct Action for Frontend
-        return {
+        result = {
             "action": "navigate",
             "status": "success",
             "doctype": doctype,
             "view": view,
-            "route_options": filters,
+            "filters": filters,
             "message": f"Successfully navigated to {doctype} {view}."
         }
+        
+        # Side-channel to router.py
+        if not hasattr(frappe.local, 'owlai_actions'):
+            frappe.local.owlai_actions = []
+        frappe.local.owlai_actions.append(result)
+        
+        return result

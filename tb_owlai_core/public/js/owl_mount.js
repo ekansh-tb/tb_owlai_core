@@ -1,7 +1,7 @@
 /**
  * 🦉 OwlAI Global Mount
  * Enhanced "Spotlight Search" Style Interface for Frappe Desk.
- * Inspired by Vite.dev - Featuring Glassmorphism, Glow effects, and smooth Motion.
+ * Designed to look like a native part of Frappe Desk with Premium Aesthetics.
  */
 
 class OwlMount {
@@ -21,6 +21,10 @@ class OwlMount {
     }
 
     async load_markdown_lib() {
+        if (typeof marked !== 'undefined') {
+            this.markdown_loaded = true;
+            return;
+        }
         try {
             await frappe.require("https://cdn.jsdelivr.net/npm/marked/marked.min.js");
             this.markdown_loaded = true;
@@ -30,7 +34,7 @@ class OwlMount {
     }
 
     init() {
-        console.log("🦉 OwlAI Spotlight: Ignite!");
+        console.log("🦉 OwlAI Spotlight: Synced with Frappe Desk core.");
         this.inject_styles();
         this.bind_shortcuts();
         this.mount_navbar_trigger();
@@ -41,31 +45,28 @@ class OwlMount {
         const style = document.createElement('style');
         style.id = 'owl-spotlight-styles';
         style.textContent = `
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
             #owl-spotlight-wrapper {
                 position: fixed;
                 top: 0; left: 0; width: 100vw; height: 100vh;
-                z-index: 999999;
+                z-index: 9999;
                 display: flex;
                 align-items: flex-start;
                 justify-content: center;
                 padding-top: 15vh;
-                background: rgba(0, 0, 0, 0.4);
-                backdrop-filter: blur(12px) saturate(180%);
+                background: rgba(var(--overlay-bg, 0, 0, 0), 0.2);
+                backdrop-filter: blur(8px);
                 opacity: 0;
                 pointer-events: none;
-                transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-                font-family: 'Inter', sans-serif;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             }
             #owl-spotlight-wrapper.active {
                 opacity: 1;
                 pointer-events: auto;
             }
             
-            /* Minimized State */
+            /* Minimized State - Floating Widget */
             #owl-spotlight-wrapper.minimized {
-                background: rgba(0, 0, 0, 0);
+                background: transparent;
                 backdrop-filter: none;
                 pointer-events: none;
                 justify-content: flex-end;
@@ -74,45 +75,47 @@ class OwlMount {
             }
             
             #owl-spotlight-wrapper.minimized #owl-spotlight-modal {
-                width: 420px;
-                max-height: 600px;
-                margin: 20px;
+                width: 400px;
+                max-height: 500px;
+                margin: 24px;
                 pointer-events: auto;
-                transform: translateY(0);
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+                transform: translateY(0) scale(1);
+                box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.1));
+                border: 1px solid var(--border-color);
             }
             
             #owl-spotlight-wrapper.minimized .owl-spotlight-glow {
                 display: none;
             }
 
-            /* The Vite Glow Effect */
             .owl-spotlight-glow {
                 position: absolute;
-                width: 800px;
-                height: 800px;
-                background: radial-gradient(circle, rgba(189, 52, 254, 0.1) 0%, rgba(65, 209, 255, 0.05) 30%, rgba(0, 0, 0, 0) 70%);
-                top: 0;
+                width: 600px;
+                height: 600px;
+                background: radial-gradient(circle, var(--fg-color, #6366f1) 0%, transparent 70%);
+                opacity: 0.15;
+                top: -300px;
                 left: 50%;
-                transform: translateX(-50%) translateY(-20%);
+                transform: translateX(-50%);
                 pointer-events: none;
                 z-index: -1;
-                filter: blur(40px);
+                filter: blur(60px);
             }
 
             #owl-spotlight-modal {
-                width: 800px;
+                width: 720px;
                 max-width: 90vw;
                 max-height: 70vh;
-                background: rgba(20, 20, 20, 0.85);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-                border-radius: 20px;
+                background: var(--card-bg, #fff);
+                border: 1px solid var(--border-color, #e2e8f0);
+                box-shadow: var(--shadow-2xl, 0 25px 50px -12px rgba(0,0,0,0.25));
+                border-radius: 12px;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
-                transform: scale(0.92) translateY(20px);
-                transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                transform: scale(0.98) translateY(10px);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                font-family: inherit;
             }
             #owl-spotlight-wrapper.active #owl-spotlight-modal {
                 transform: scale(1) translateY(0);
@@ -121,181 +124,162 @@ class OwlMount {
             .owl-bar {
                 display: flex;
                 align-items: center;
-                padding: 20px 24px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-                background: rgba(255, 255, 255, 0.01);
+                padding: 16px 20px;
+                border-bottom: 1px solid var(--border-color);
+                background: var(--bg-color);
             }
             .owl-search-icon {
-                color: #bd34fe; /* Vite Purple */
-                margin-right: 16px;
-                filter: drop-shadow(0 0 8px rgba(189, 52, 254, 0.4));
+                color: var(--primary-color);
+                margin-right: 14px;
+                display: flex;
+                align-items: center;
             }
             .owl-input {
                 flex: 1;
                 background: transparent;
                 border: none;
-                color: #fff;
-                font-size: 20px;
+                color: var(--text-color);
+                font-size: 18px;
                 outline: none;
                 font-weight: 400;
-                letter-spacing: -0.01em;
             }
             .owl-input::placeholder {
-                color: rgba(255, 255, 255, 0.2);
+                color: var(--text-muted);
+                opacity: 0.5;
             }
 
             .owl-header-actions {
                 display: flex;
-                gap: 8px;
+                gap: 4px;
             }
             .owl-action-btn {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.02);
-                color: rgba(255, 255, 255, 0.4);
-                width: 32px; height: 32px;
-                border-radius: 8px;
+                background: transparent;
+                border: none;
+                color: var(--text-muted);
+                width: 30px; height: 30px;
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: background 0.2s;
             }
             .owl-action-btn:hover {
-                background: rgba(255, 255, 255, 0.1);
-                color: #fff;
-                transform: scale(1.05);
+                background: var(--bg-hover-color);
+                color: var(--text-color);
             }
 
             .owl-content {
                 flex: 1;
                 overflow-y: auto;
-                min-height: 120px;
-                max-height: 55vh;
+                min-height: 80px;
+                max-height: 50vh;
                 display: flex;
                 flex-direction: column;
-                scroll-behavior: smooth;
-                background: rgba(0, 0, 0, 0.1);
+                background: var(--bg-color);
             }
             
             .owl-message {
-                padding: 24px 32px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-                font-size: 16px;
-                line-height: 1.7;
-                color: rgba(255, 255, 255, 0.85);
-                animation: owlSlideUp 0.5s ease both;
+                padding: 16px 20px;
+                border-bottom: 1px solid var(--border-color);
+                font-size: 14px;
+                line-height: 1.6;
+                color: var(--text-color);
+                animation: owlFadeIn 0.3s ease both;
             }
             .owl-message.user {
-                background: rgba(189, 52, 254, 0.03);
-                color: #fff;
+                background: var(--subtle-accent, #f8fafc);
                 font-weight: 500;
             }
             .owl-message.assistant {
                 background: transparent;
             }
             .owl-message.system {
-                color: rgba(255, 255, 255, 0.3);
-                font-size: 13px;
-                padding: 16px 32px;
+                color: var(--text-muted);
+                font-size: 12px;
+                padding: 12px 20px;
                 text-align: center;
+                background: var(--bg-light-gray);
             }
 
             .owl-typing-indicator {
                 display: flex;
-                gap: 6px;
-                padding: 24px 32px;
+                gap: 4px;
+                padding: 16px 20px;
                 align-items: center;
             }
             .owl-dot {
-                width: 5px; height: 5px;
-                background: #bd34fe;
+                width: 4px; height: 4px;
+                background: var(--primary-color);
                 border-radius: 50%;
                 opacity: 0.6;
-                animation: owlPulse 1.5s infinite;
+                animation: owlPulse 1.2s infinite;
             }
             .owl-dot:nth-child(2) { animation-delay: 0.2s; }
             .owl-dot:nth-child(3) { animation-delay: 0.4s; }
 
-            @keyframes owlSlideUp {
-                from { opacity: 0; transform: translateY(10px); }
+            @keyframes owlFadeIn {
+                from { opacity: 0; transform: translateY(4px); }
                 to { opacity: 1; transform: translateY(0); }
             }
             @keyframes owlPulse {
-                0%, 100% { opacity: 0.2; transform: scale(0.8); }
-                50% { opacity: 1; transform: scale(1.2); }
+                0%, 100% { opacity: 0.3; transform: scale(0.8); }
+                50% { opacity: 1; transform: scale(1.1); }
             }
 
             .owl-trigger-icon-svg {
-                filter: drop-shadow(0 0 5px rgba(189, 52, 254, 0.4));
-                transition: transform 0.3s ease;
+                transition: transform 0.2s ease;
+                fill: var(--text-muted);
             }
             #owl-navbar-trigger:hover .owl-trigger-icon-svg {
-                transform: scale(1.2) rotate(15deg);
+                transform: scale(1.1);
+                fill: var(--primary-color);
             }
             
             .hidden { display: none !important; }
 
-            /* Markdown Styling */
-            .owl-content h1, .owl-content h2, .owl-content h3 { color: #fff; margin: 16px 0 8px; font-weight: 700; }
-            .owl-content h1 { font-size: 1.5em; }
-            .owl-content h2 { font-size: 1.3em; }
-            .owl-content h3 { font-size: 1.1em; }
-            
-            .owl-content p { margin-bottom: 12px; }
-            
-            .owl-content ul, .owl-content ol { 
-                margin: 12px 0; 
-                padding-left: 20px; 
-                color: rgba(255, 255, 255, 0.8);
-            }
-            .owl-content li { margin-bottom: 6px; }
-            
+            /* Markdown Styling - Harmonized with Frappe */
+            .owl-content h1, .owl-content h2, .owl-content h3 { color: var(--text-color); margin: 12px 0 6px; font-weight: 600; }
+            .owl-content p { margin-bottom: 8px; }
             .owl-content pre {
-                background: #000;
-                padding: 16px;
-                border-radius: 12px;
-                margin: 16px 0;
-                border: 1px solid rgba(255,255,255,0.08);
+                background: var(--code-bg, #f4f4f4);
+                padding: 12px;
+                border-radius: 8px;
+                margin: 12px 0;
+                border: 1px solid var(--border-color);
                 overflow-x: auto;
             }
             .owl-content code {
-                font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-size: 0.85em;
-                color: #41d1ff;
-                background: rgba(65, 209, 255, 0.1);
-                padding: 2px 6px;
+                font-family: var(--font-stack-monospace);
+                font-size: 0.9em;
+                color: var(--primary-color);
+                background: var(--bg-light-gray);
+                padding: 2px 4px;
                 border-radius: 4px;
             }
-            .owl-content pre code {
-                background: transparent;
-                padding: 0;
-                color: #e2e8f0;
+            .owl-content a { color: var(--primary-color); text-decoration: none; }
+            .owl-content a:hover { text-decoration: underline; }
+
+            /* Action Feedback */
+            .owl-action-card {
+                margin: 8px 0;
+                padding: 10px 14px;
+                border-radius: 8px;
+                background: var(--bg-light-gray);
+                border: 1px solid var(--border-color);
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
             }
-            
-            .owl-content table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 16px 0;
-                font-size: 0.9em;
+            .owl-action-header {
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: #059669;
+                display: flex;
+                align-items: center;
+                gap: 6px;
             }
-            .owl-content th, .owl-content td {
-                padding: 10px;
-                border: 1px solid rgba(255,255,255,0.06);
-                text-align: left;
-            }
-            .owl-content th { background: rgba(255,255,255,0.04); font-weight: 600; }
-            
-            .owl-content strong { color: #fff; font-weight: 600; }
-            .owl-content blockquote {
-                border-left: 4px solid #bd34fe;
-                padding-left: 16px;
-                margin: 16px 0;
-                color: rgba(255,255,255,0.6);
-                font-style: italic;
-            }
-            
-            .owl-content a { color: #bd34fe; text-decoration: none; border-bottom: 1px solid transparent; transition: border 0.3s; }
-            .owl-content a:hover { border-bottom: 1px solid #bd34fe; }
         `;
         document.head.appendChild(style);
     }
@@ -304,7 +288,7 @@ class OwlMount {
         frappe.ui.keys.add_shortcut({
             shortcut: 'ctrl+k',
             action: () => this.toggle(),
-            description: 'Open OwlAI Spotlight'
+            description: 'Open OwlAI Assistant'
         });
     }
 
@@ -312,24 +296,21 @@ class OwlMount {
         $(document).on('toolbar_setup', () => {
             const $navbar = $('.navbar .navbar-right .nav.navbar-nav');
             if ($navbar.length && !$('#owl-navbar-trigger').length) {
-                $(`<li class="nav-item" id="owl-navbar-trigger" title="Open OwlAI (Ctrl+K)">
-                    <a class="nav-link" href="#">
-                        <svg class="owl-trigger-icon-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="url(#vite-gradient)" />
-                            <defs>
-                                <linearGradient id="vite-gradient" x1="4.5" y1="2" x2="19.5" y2="21" gradientUnits="userSpaceOnUse">
-                                    <stop stop-color="#bd34fe" />
-                                    <stop offset="1" stop-color="#41d1ff" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                    </a>
-                 </li>`)
-                    .prependTo($navbar)
-                    .on('click', (e) => {
-                        e.preventDefault();
-                        this.toggle();
-                    });
+                const triggerHtml = `
+                    <li class="nav-item" id="owl-navbar-trigger" title="OwlAI Assistant (Ctrl+K)">
+                        <a class="nav-link" href="#">
+                            <svg class="owl-trigger-icon-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                                <path d="M2 12h20"></path>
+                            </svg>
+                        </a>
+                    </li>
+                `;
+                $(triggerHtml).prependTo($navbar).on('click', (e) => {
+                    e.preventDefault();
+                    this.toggle();
+                });
             }
         });
     }
@@ -345,27 +326,27 @@ class OwlMount {
                 <div class="owl-spotlight-glow"></div>
                 <div class="owl-bar">
                     <span class="owl-search-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
                     </span>
-                    <input type="text" id="owl-input" class="owl-input" placeholder="What would you like to build today?" autocomplete="off">
+                    <input type="text" id="owl-input" class="owl-input" placeholder="Ask OwlAI anything..." autocomplete="off">
                     <div class="owl-header-actions">
-                         <button class="owl-action-btn" id="owl-btn-expand" title="Open Dashboard (Ctrl+Shift+O)">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        <button class="owl-action-btn" id="owl-btn-expand" title="Open Full Chat">
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
                         </button>
                         <button class="owl-action-btn" id="owl-btn-minimize" title="Minimize">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
-                        <button class="owl-action-btn" id="owl-btn-close" title="Dismiss (Esc)">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <button class="owl-action-btn" id="owl-btn-close" title="Close (Esc)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                     </div>
                 </div>
                 <div id="owl-content" class="owl-content">
                     <div class="owl-message system">
-                        OwlAI Integration Active • Contextualized to ${frappe.get_route_str() || 'Home'}
+                        Assistant ready. Type your command.
                     </div>
                 </div>
             </div>
@@ -379,7 +360,6 @@ class OwlMount {
         document.getElementById('owl-btn-minimize').addEventListener('click', () => this.minimize());
         document.getElementById('owl-backdrop').addEventListener('click', () => this.toggle(false));
         document.getElementById('owl-btn-expand').addEventListener('click', () => {
-            // Fix: Open correct route in new tab using hash routing
             window.open('/owlnest/#/chat', '_blank');
         });
     }
@@ -391,7 +371,6 @@ class OwlMount {
 
         const nextState = typeof forceState !== 'undefined' ? forceState : !this.is_open;
 
-        // If we are currently minimized and trying to open, just maximize
         if (this.is_minimized && nextState) {
             this.maximize();
             return;
@@ -399,7 +378,6 @@ class OwlMount {
 
         this.is_open = nextState;
 
-        // Reset minimized state on close/fresh open logic unless explicitly handling maximize/minimize
         if (!this.is_open) {
             this.is_minimized = false;
         }
@@ -408,16 +386,13 @@ class OwlMount {
             wrapper.classList.remove('hidden');
             setTimeout(() => {
                 wrapper.classList.add('active');
-                if (!this.is_minimized) {
-                    input.focus();
-                }
+                if (!this.is_minimized) input.focus();
             }, 10);
         } else {
-            wrapper.classList.remove('active');
-            wrapper.classList.remove('minimized'); // Ensure clean state
+            wrapper.classList.remove('active', 'minimized');
             setTimeout(() => {
                 if (!this.is_open) wrapper.classList.add('hidden');
-            }, 400);
+            }, 300);
         }
     }
 
@@ -435,7 +410,7 @@ class OwlMount {
         if (wrapper && this.is_open) {
             this.is_minimized = false;
             wrapper.classList.remove('minimized');
-            setTimeout(() => input.focus(), 300);
+            setTimeout(() => input.focus(), 200);
         }
     }
 
@@ -464,25 +439,22 @@ class OwlMount {
 
         if (message_type === 'action') {
             msgDiv.innerHTML = `
-                <div style="color: #10b981; font-size: 11px; font-weight: bold; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10"></path><path d="M7 20h10"></path><path d="M12 16v4"></path><path d="M15 8H9"></path></svg>
-                    Action Dispatched
-                </div>
-                <div style="font-family: monospace; font-size: 11px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.1); color: rgba(16, 185, 129, 0.8);">
-                    ${content}
+                <div class="owl-action-card">
+                    <div class="owl-action-header">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Action Dispatched: ${content}
+                    </div>
                 </div>
             `;
         } else {
             let htmlContent = content;
             if (role !== 'user' && role !== 'system') {
-                // Strip thinking tags
                 htmlContent = content.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
-
                 if (this.markdown_loaded && typeof marked !== 'undefined' && htmlContent) {
                     htmlContent = marked.parse(htmlContent);
                 }
             } else if (role === 'user') {
-                htmlContent = frappe.utils.xss_clean ? frappe.utils.xss_clean(content) : content;
+                htmlContent = frappe.utils.xss_clean ? frappe.utils.xss_clean(htmlContent) : htmlContent;
             }
             msgDiv.innerHTML = htmlContent || "...";
         }
@@ -532,17 +504,14 @@ class OwlMount {
             loadingDiv.remove();
 
             let buffer = "";
-            let fullText = ""; /* Fixed: Initialize fullText */
+            let fullText = "";
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
-                buffer += chunk;
-
+                buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n\n');
-                // The last element is either empty (if chunk ended with \n\n) or incomplete
                 buffer = lines.pop();
 
                 for (const line of lines) {
@@ -556,7 +525,8 @@ class OwlMount {
 
                             if (data.action_data) {
                                 (Array.isArray(data.action_data) ? data.action_data : [data.action_data]).forEach(action => {
-                                    this.append_message('assistant', action.name + "(" + JSON.stringify(action.parameters) + ")", 'action');
+                                    const actionLabel = action.name.charAt(0).toUpperCase() + action.name.slice(1);
+                                    this.append_message('assistant', actionLabel, 'action');
                                     this.handle_action(action);
                                 });
                             }
@@ -575,11 +545,7 @@ class OwlMount {
                                 }
                                 contentDiv.scrollTop = contentDiv.scrollHeight;
                             }
-                        } catch (e) {
-                            console.warn("OwlAI: Failed to parse SSE data", e);
-                        }
-                    } else if (line.trim().startsWith('event: error')) {
-                        // Handle error event if needed, though we now yield friendly errors as text
+                        } catch (e) { }
                     }
                 }
             }
@@ -590,36 +556,25 @@ class OwlMount {
     }
 
     handle_action(action) {
-        // Execute tool action in Desk
         if (action.name === 'navigate') {
             const params = action.parameters || {};
             if (params.doctype) {
                 const docname = params.docname || (params.filters && (params.filters.name || params.filters.id));
                 const view = params.view || 'List';
 
-                if (docname && view !== 'Page') {
+                if (docname && view === 'Form') {
                     frappe.set_route('Form', params.doctype, docname);
                 } else {
-                    if (params.filters) {
-                        // Correct way to pass filters to a list in Frappe
-                        frappe.route_options = params.filters;
-                    }
+                    if (params.filters) frappe.route_options = params.filters;
 
-                    if (view === 'Page') {
-                        // Standard Page Navigation
-                        frappe.set_route(params.doctype);
-                    } else if (view === 'List') {
-                        frappe.set_route('List', params.doctype);
-                    } else if (view === 'Report') {
-                        frappe.set_route('query-report', params.doctype);
-                    } else if (view === 'Dashboard') {
-                        frappe.set_route('dashboard-view', params.doctype);
-                    } else {
-                        // Fallback
-                        frappe.set_route('List', params.doctype);
-                    }
+                    if (view === 'Page') frappe.set_route(params.doctype);
+                    else if (view === 'List') frappe.set_route('List', params.doctype);
+                    else if (view === 'Report') frappe.set_route('query-report', params.doctype);
+                    else if (view === 'Dashboard') frappe.set_route('dashboard-view', params.doctype);
+                    else frappe.set_route('List', params.doctype);
                 }
-                this.minimize(); // Usage: Minimize instead of close
+                // Minimize to show the navigation result while keeping AI available
+                this.minimize();
             }
         }
     }

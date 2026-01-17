@@ -227,13 +227,26 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
                         elif isinstance(chunk, str):
                              token = chunk
                         
-                        # 2. Capture Tool Calls if present in this chunk
+                        # 2. Capture Tool Calls if present in this chunk (Standard Agno)
                         current_tool_calls = []
                         if hasattr(chunk, "tools") and chunk.tools:
                             for t in chunk.tools:
                                 tool_call = {"name": t.tool_name, "parameters": t.tool_args}
                                 tool_calls.append(tool_call) # For analytics
                                 current_tool_calls.append(tool_call)
+
+                        # 3. Capture Side-Channel Actions (e.g. from NavigateTool executed internally)
+                        if hasattr(frappe.local, "owlai_actions") and frappe.local.owlai_actions:
+                             for action in frappe.local.owlai_actions:
+                                  # Format for frontend: { name: 'navigate', parameters: {...} }
+                                  tool_call = {
+                                      "name": action.get("action", "navigate"),
+                                      "parameters": action
+                                  }
+                                  current_tool_calls.append(tool_call)
+                                  tool_calls.append(tool_call)
+                             # Clear queue to ensure we only send once
+                             frappe.local.owlai_actions = []
 
                         # Yield data
                         payload = {}

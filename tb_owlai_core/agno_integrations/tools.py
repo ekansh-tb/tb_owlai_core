@@ -10,8 +10,9 @@ class GetDoctypeSchemaArgs(BaseModel):
 
 class NavigateArgs(BaseModel):
     doctype: str = Field(..., description="The DocType or Page Name to navigate to (e.g. 'Sales Order', 'Workspaces').")
+    docname: Optional[str] = Field(None, description="Optional document ID/name for Form view (e.g. 'SO-001').")
     view: str = Field("List", description="The view type (List, Form, Page, Report, Dashboard, Kanban, Tree).")
-    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset. Use {'name': 'DOC-ID'} for Form view.")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters to apply/preset.")
 
 class WebSearchArgs(BaseModel):
     query: str = Field(..., description="The query to search the internet for.")
@@ -51,7 +52,8 @@ class FrappeToolkit(Toolkit):
             "search_documents": self.search_documents,
             "search_knowledge_base": self.search_knowledge_base,
             "web_search": self.web_search,
-            "frappe_utils": self.frappe_utils
+            "frappe_utils": self.frappe_utils,
+            "maps": self.maps
         }
         
         if selected_tools:
@@ -104,30 +106,30 @@ class FrappeToolkit(Toolkit):
         return self._exec("get_doctype_info", doctype=doctype)
 
 
-    def navigate(self, doctype: str, view: str = "List", filters: Optional[Union[dict, str]] = None) -> dict:
+    def navigate(self, doctype: str, docname: Optional[str] = None, view: str = "List", filters: Optional[Union[dict, str]] = None) -> dict:
         """
-        Navigate the user to a specific DocType list, form, or a standard Page.
-        IMPORTANT: If you have a specific document name or ID, set view="Form" and use filters={"name": "id"}.
-        For standard pages (like 'Workspaces', 'Dashboard'), set view="Page" and doctype="PageName".
+        Navigate the user's browser to a specific screen (DocType List, Form, Report, or Page).
+        Use this when the user wants to 'Go to', 'Open', 'Show', 'Browse', or 'View' something on their screen.
         
         Args:
-            doctype (str): The DocType or Page Name.
-            view (str): The view type (List, Form, Page, etc.).
-            filters (dict): Optional filters to apply.
+            doctype (str): The name of the DocType or Page (e.g. 'Employee', 'Sales Order', 'Workspaces').
+            docname (str): The specific document name/ID to open in Form view (optional).
+            view (str): The view type to open: 'List', 'Form', 'Report', 'Dashboard', 'Kanban', 'Tree', 'Page'.
+            filters (dict): Optional filters to apply to the list/report view.
         """
         parsed_filters = self._parse_dict(filters)
         
-        # Heuristic: If filters contains 'name', it's usually a Form view request
-        if parsed_filters and ("name" in parsed_filters or "id" in parsed_filters):
-             if view == "List": # Only override if it was default
-                 view = "Form"
+        # If docname is provided, force view to Form unless explicitly stated otherwise
+        if docname and view == "List":
+             view = "Form"
 
-        return self._exec("navigate", doctype=doctype, view=view, filters=parsed_filters)
+        return self._exec("navigate", doctype=doctype, docname=docname, view=view, filters=parsed_filters)
 
     def list_documents(self, doctype: str, filters: Optional[Union[dict, str]] = None, fields: Optional[Union[list, str]] = None, limit_page_length: int = 10) -> List[str]:
         """
-        Fetch a list of documents for a given DocType.
-        Returns a human-readable list of strings to save tokens and avoid raw JSON spam.
+        Fetch a list of documents from the database to answer a question. 
+        DO NOT use this if the user wants to 'Go to' or 'View' a list on their screen; use `navigate` instead.
+        Use this ONLY when the user asks for information in the chat (e.g., 'What are the top 5 customers?').
         """
         parsed_filters = self._parse_dict(filters)
         parsed_fields = self._parse_list(fields)
@@ -259,3 +261,15 @@ class FrappeToolkit(Toolkit):
             dict: Result of the function.
         """
         return self._exec("frappe_utils", function=function, args=args or [], kwargs=kwargs or {})
+
+    def maps(self, doctype: Optional[str] = None, page: Optional[str] = None, view: str = "List", filters: Optional[dict] = None) -> dict:
+        """
+        Smart Navigation Tool. Use this to open lists, reports, or filtered views.
+        
+        Args:
+           doctype (str): DocType to navigate to (e.g. 'Sales Order').
+           page (str): Alternative alias for doctype.
+           view (str): View type: List, Report, Dashboard, Kanban, Tree.
+           filters (dict): Filters to apply.
+        """
+        return self._exec("maps", doctype=doctype, page=page, view=view, filters=self._parse_dict(filters))

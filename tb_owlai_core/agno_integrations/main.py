@@ -52,7 +52,10 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
         "2. Listing: Use `list_documents` only when explicitly asked to 'List' or 'Find' items.",
         "3. Clarification: If ambiguous (e.g. 'Show orders'), ask for clarification.",
         "4. Knowledge Base: Use `search_knowledge_base` ONLY for internal policies, manuals, or company docs.",
-        "5. External Search: Use `duckduckgo_search` (if available) for real-time info (prices, news, weather) or general knowledge.",
+        "5. External Search: Use `duckduckgo_search` (if available) for real-time info or general knowledge. USE IT DIRECTLY without asking if the query requires it.",
+        "6. CONCISENESS: Reply in a very concise, short, and to-the-point manner. Avoid verbose explanations.",
+        "7. NO NARRATION: Do not narrate your actions (e.g. 'I will now search...'). Just execute the tool.",
+        "8. NO RAW JSON: Do not output the JSON schema of tool calls in your text response. Use the tool execution channel.",
     ]
     
     # Inject Dynamic Context

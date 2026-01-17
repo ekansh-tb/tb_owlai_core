@@ -427,7 +427,10 @@ function deleteConversation(id) {
 
 function renderMarkdown(text) {
     if (!text) return ''
-    const cleanText = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim()
+    const cleanText = text
+        .replace(/<thought>[\s\S]*?<\/thought>/g, '')
+        .replace(/\{"name":\s*"[\w_]+",\s*"parameters":\s*\{[\s\S]*?\}\}/g, '')
+        .trim()
     const conv = new showdown.Converter({ tables: true, simplifiedAutoLink: true, strikethrough: true })
     return conv.makeHtml(cleanText)
 }

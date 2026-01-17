@@ -497,7 +497,10 @@ class OwlMount {
 
                             if (data.token) {
                                 fullText += data.token;
-                                let displayUpdate = fullText.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
+                                let displayUpdate = fullText
+                                    .replace(/<thought>[\s\S]*?<\/thought>/g, '')
+                                    .replace(/\{"name":\s*"[\w_]+",\s*"parameters":\s*\{[\s\S]*?\}\}/g, '')
+                                    .trim();
 
                                 if (this.markdown_loaded && typeof marked !== 'undefined' && displayUpdate) {
                                     msgDiv.innerHTML = marked.parse(displayUpdate);

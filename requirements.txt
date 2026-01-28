@@ -4,3 +4,5 @@ agno
 tantivy
 beautifulsoup4
 pypdf
+crewai
+chromadb

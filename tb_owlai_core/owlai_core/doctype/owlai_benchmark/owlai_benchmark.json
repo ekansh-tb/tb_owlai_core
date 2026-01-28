@@ -1,0 +1,111 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "field:test_name",
+    "creation": "2026-01-27 00:00:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "test_name",
+        "agent",
+        "prompt",
+        "expected_response_contains",
+        "expected_tool_call",
+        "column_break_1",
+        "last_run_status",
+        "failure_reason",
+        "section_break_results",
+        "last_run_output"
+    ],
+    "fields": [
+        {
+            "fieldname": "test_name",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Test Name",
+            "reqd": 1,
+            "unique": 1
+        },
+        {
+            "fieldname": "agent",
+            "fieldtype": "Link",
+            "label": "Target Agent",
+            "options": "OwlAI Agent",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "prompt",
+            "fieldtype": "Text",
+            "label": "Input Prompt",
+            "reqd": 1
+        },
+        {
+            "fieldname": "expected_response_contains",
+            "fieldtype": "Data",
+            "label": "Expected Response Contains (Substring)",
+            "description": "Fail if response doesn't contain this text."
+        },
+        {
+            "fieldname": "expected_tool_call",
+            "fieldtype": "Data",
+            "label": "Expected Tool Call (Name)",
+            "description": "Fail if this tool is not called."
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "last_run_status",
+            "fieldtype": "Select",
+            "label": "Last Run Status",
+            "options": "Pending\nPassed\nFailed",
+            "default": "Pending",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "failure_reason",
+            "fieldtype": "Data",
+            "label": "Failure Reason",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_results",
+            "fieldtype": "Section Break",
+            "label": "Results"
+        },
+        {
+            "fieldname": "last_run_output",
+            "fieldtype": "Text Editor",
+            "label": "Full Output",
+            "read_only": 1
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-01-27 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Benchmark",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1
+}

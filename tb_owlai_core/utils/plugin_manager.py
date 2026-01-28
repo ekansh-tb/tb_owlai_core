@@ -72,12 +72,15 @@ class PluginManager:
                     info = plugin_instance.get_info()
                     plugin_name = info.get("name", name)
                     self.plugins[plugin_name] = plugin_instance
-                    # Default status from settings could go here, for now default True for core
+                    # Default status logic
+                    # 1. Always enabled flags from plugin info
                     if info.get("always_enabled", False):
                         self.plugin_status[plugin_name] = True
                     else:
-                        # Future: Load from settings
-                        self.plugin_status[plugin_name] = False
+                        # 2. Check settings (Future: Load from DB)
+                        # For Zero-Config: Default to TRUE if not explicitly disabled
+                        # This ensures new users get tools immediately.
+                        self.plugin_status[plugin_name] = True
                         
             except Exception as e:
                 self.logger.error(f"Failed to load plugin {name}: {str(e)}")

@@ -14,6 +14,8 @@ from agno.models.message import Message
 from tb_owlai_core.owlai_core.agno_adapter import OwlAIToolkit
 from tb_owlai_core.utils import get_active_provider_config
 
+from tb_owlai_core.agno_integrations.model_factory import get_model_instance
+
 class OwlAgent:
     def __init__(self, user: str, context: Optional[Any] = None, conversation: Any = None, conversation_name: Optional[str] = None, max_steps: int = 5, agent_id: str = None):
         self.user = user
@@ -35,7 +37,7 @@ class OwlAgent:
             if hasattr(settings, "default_agent") and settings.default_agent:
                 self.agent_doc = frappe.get_doc("OwlAI Agent", settings.default_agent)
 
-        self.config = self._resolve_config()
+        # Config is now handled by Model Factory via agent_doc linkage
         
         # Initialize Conversation if needed
         if not self.conversation and conversation_name:
@@ -45,47 +47,11 @@ class OwlAgent:
         # Setup OwlAi Agent
         self.agno_agent = self._setup_agno_agent()
 
-    def _resolve_config(self) -> Dict[str, Any]:
-        """Resolves config from DocTypes or Settings."""
-        if self.agent_doc and self.agent_doc.model:
-            try:
-                model_doc = frappe.get_doc("OwlAI Model", self.agent_doc.model)
-                provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
-                return {
-                    "model_id": model_doc.model_name, # e.g. "qwen2.5:1.5b"
-                    "api_key": provider_doc.get_password("api_key", raise_exception=False),
-                    "api_base": provider_doc.api_base,
-                    "provider": provider_doc.provider_name.lower()
-                }
-            except Exception as e:
-                frappe.log_error(f"Config Error: {e}")
-        
-        # Fallback
-        legacy = get_active_provider_config()
-        # Adapt legacy dict to our needs
-        return {
-            "model_id": legacy.get("model", "llama3").split("/")[-1], # Strip provider prefix if present
-            "api_key": legacy.get("api_key"),
-            "api_base": legacy.get("api_base"),
-            "provider": legacy.get("provider", "ollama")
-        }
-
     def _setup_agno_agent(self) -> Agent:
         """Configures and returns the OwlAi Agent instance."""
-        # 1. Select Model
-        model = None
-        provider = self.config.get("provider", "ollama")
-        model_id = self.config.get("model_id", "llama3")
-        
-        if provider == "ollama":
-            api_base = self.config.get("api_base")
-            if not api_base: api_base = "http://localhost:11434"
-            model = Ollama(id=model_id, host=api_base)
-        elif provider == "openai":
-            model = OpenAIChat(id=model_id, api_key=self.config.get("api_key"), base_url=self.config.get("api_base"))
-        else:
-            # Default fallback
-            model = Ollama(id=model_id)
+        # 1. Select Model using Factory
+        model_link = self.agent_doc.model if self.agent_doc else None
+        model = get_model_instance(model_link)
 
         # 2. Select Tools
         tool_names = []

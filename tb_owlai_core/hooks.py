@@ -88,6 +88,7 @@ app_include_js = [
 # before_install = "tb_owlai_core.install.before_install"
 # before_install = "tb_owlai_core.install.before_install"
 after_install = "tb_owlai_core.setup.install.after_install"
+after_migrate = "tb_owlai_core.config.auto_discovery.discover_and_register_providers"
 
 # Uninstallation
 # ------------

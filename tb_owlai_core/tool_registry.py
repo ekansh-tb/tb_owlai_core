@@ -116,3 +116,27 @@ class ToolRegistry:
         Alias for execute_tool to match Agent usage.
         """
         return self.execute_tool(tool_name, arguments)
+
+    def get_crewai_tool(self, tool_name):
+        """
+        Returns a crewai.tools.Tool compatible object for a given tool name.
+        """
+        from crewai.tools import Tool
+        
+        # 1. Get Tool Doc or Plugin
+        tool_doc = self.get_tool_doc(tool_name)
+        plugin_tool = self.plugin_manager.get_tool(tool_name)
+        
+        description = f"Execute tool {tool_name}"
+        if plugin_tool and hasattr(plugin_tool, "description"):
+            description = plugin_tool.description
+        
+        # Define the function
+        def func(**kwargs):
+            return self.execute_tool(tool_name, kwargs)
+        
+        return Tool(
+            name=tool_name,
+            func=func,
+            description=description
+        )

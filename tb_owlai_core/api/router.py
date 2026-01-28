@@ -297,7 +297,7 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
         frappe.log_error(title="OwlAI Stream Error", message=error_msg)
         # Return a Response with error if possible, or re-raise to see it in logs
         return Response(f"event: error\ndata: {json.dumps({'error': str(top_e)})}\n\n", 
-                        status=500, mimetype='text/event-stream')
+                        status=200, mimetype='text/event-stream')
 
 
 @frappe.whitelist()
@@ -514,14 +514,30 @@ def _update_conversation_title(conversation, text, image_file, audio_file):
 
 
 @frappe.whitelist()
-def update_owlai_settings(model=None, api_key=None, enable_analytics=None):
+def update_owlai_settings(model=None, api_key=None, enable_analytics=None, provider=None):
     """Update settings directly from Chat UI"""
     if not frappe.session.user: return
     settings = frappe.get_single("OwlAI Settings")
+    
+    # Provider Update
+    if provider:
+        settings.provider = provider
+        
+    # Model Update
     if model:
-        if "gemini" in model.lower():
+        # Check if it's a Gemini model
+        if "gemini" in model.lower() and "ollama" not in model.lower():
              settings.gemini_model = model
-             settings.provider = "Generative AI (Gemini)"
+             if not provider: settings.provider = "Generative AI (Gemini)"
+        else:
+             # Assume Ollama or Link
+             settings.ollama_model = model
+             if not provider: settings.provider = "Local (Ollama)"
+             
+             # Also update the Default Agent's model to match, for immediate effect
+             if settings.default_agent:
+                 frappe.db.set_value("OwlAI Agent", settings.default_agent, "model", model)
+
     if api_key:
         settings.gemini_api_key = api_key
     

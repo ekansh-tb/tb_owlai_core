@@ -53,7 +53,8 @@ class FrappeToolkit(Toolkit):
             "search_knowledge_base": self.search_knowledge_base,
             "web_search": self.web_search,
             "frappe_utils": self.frappe_utils,
-            "maps": self.maps
+            "maps": self.maps,
+            "run_crew": self.run_crew
         }
         
         if selected_tools:
@@ -262,6 +263,10 @@ class FrappeToolkit(Toolkit):
         """
         return self._exec("frappe_utils", function=function, args=args or [], kwargs=kwargs or {})
 
+class RunCrewArgs(BaseModel):
+    crew_name: str = Field(..., description="The name of the OwlAI Crew to execute.")
+    inputs: Optional[Dict[str, Any]] = Field(None, description="Input parameters/context for the Crew.")
+
     def maps(self, doctype: Optional[str] = None, page: Optional[str] = None, view: str = "List", filters: Optional[dict] = None) -> dict:
         """
         Smart Navigation Tool. Use this to open lists, reports, or filtered views.
@@ -273,3 +278,21 @@ class FrappeToolkit(Toolkit):
            filters (dict): Filters to apply.
         """
         return self._exec("maps", doctype=doctype, page=page, view=view, filters=self._parse_dict(filters))
+
+    def run_crew(self, crew_name: str, inputs: Optional[Union[dict, str]] = None) -> str:
+        """
+        Execute a CrewAI Crew (Multi-Agent team).
+        Use this when the user's request requires a complex workflow or specialized agents defined in a Crew.
+        
+        Args:
+            crew_name (str): The name of the OwlAI Crew to execute.
+            inputs (dict): Input context for the crew tasks.
+        """
+        try:
+             # Lazy import to avoid circular dependency issues if any
+             from tb_owlai_core.crewai_integrations.crew_manager import CrewManager
+             manager = CrewManager()
+             result = manager.run_crew(crew_name, self._parse_dict(inputs))
+             return str(result)
+        except Exception as e:
+             return f"Error executing Crew '{crew_name}': {e}"

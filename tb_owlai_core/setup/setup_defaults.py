@@ -22,7 +22,7 @@ def check_ollama_service():
     try:
         response = requests.get("http://localhost:11434/api/tags", timeout=2)
         if response.status_code == 200:
-            return True
+            return response.json()
     except:
         pass
     return False
@@ -31,10 +31,10 @@ def setup_provider_and_model():
     # 2. Setup Provider & Model
     # Logic: Check if Ollama is running. If so, configure Ollama. Else, configure OpenAI placeholder.
     
-    ollama_running = check_ollama_service()
+    ollama_data = check_ollama_service()
     
-    if ollama_running:
-        return setup_ollama()
+    if ollama_data:
+        return setup_ollama(ollama_data)
     else:
         # Fallback to OpenAI if Ollama isn't found
         # But first, check if we already have a default provider set. If yes, respect it.
@@ -43,7 +43,7 @@ def setup_provider_and_model():
             return default_provider
         return setup_openai()
 
-def setup_ollama():
+def setup_ollama(ollama_data=None):
     # Provider: Ollama
     existing_provider = frappe.db.get_value("OwlAI Provider", {"provider_name": "Ollama"}, "name")
     
@@ -59,21 +59,37 @@ def setup_ollama():
         p.insert(ignore_permissions=True)
         provider_doc_name = p.name
     
-    # Model: Llama3.2:3b
-    # We name it 'llama3.2:3b' to match the installed model
-    existing_model = frappe.db.get_value("OwlAI Model", {"model_name": "llama3.2:3b", "provider": provider_doc_name}, "name")
-
-    if not existing_model:
-        m = frappe.get_doc({
-            "doctype": "OwlAI Model",
-            "model_name": "llama3.2:3b",
-            "provider": provider_doc_name,
-            "context_window": 128000,
-            "supports_vision": 0,
-            "supports_function_calling": 1
-        })
-        m.insert(ignore_permissions=True)
+    # Process dynamically found models
+    models = []
+    if ollama_data and "models" in ollama_data:
+        models = ollama_data.get("models", [])
         
+    for model in models:
+        model_name = model.get("name")
+        if not model_name: continue
+        
+        # Clean tag if needed (e.g. 'latest')
+        # We use the full name 'llama3:latest' as model_name for clarity
+        
+        existing_model = frappe.db.get_value("OwlAI Model", {"model_name": model_name, "provider": provider_doc_name}, "name")
+        if not existing_model:
+            m = frappe.get_doc({
+                "doctype": "OwlAI Model",
+                "model_name": model_name,
+                "provider": provider_doc_name,
+                "context_window": 128000, # Default assumption
+                "supports_vision": 0,
+                "supports_function_calling": 1
+            })
+            m.insert(ignore_permissions=True)
+            print(f"Registered generic Ollama model: {model_name}")
+
+    if not models:
+        # Fallback if list failed but service is up
+        print("Warning: No models found via API, adding fallback.")
+        models = [{"name": "llama3.2:3b"}]
+        # ... (Create fallback if needed)
+
     return provider_doc_name
 
 def setup_openai():

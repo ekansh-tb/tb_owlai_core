@@ -46,102 +46,78 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
     from tb_owlai_core.agno_integrations import context_builder
     
     # Base Instructions (Role & Capabilities)
-    # Base Instructions (Role & Capabilities)
     instructions = [
-        "You are an intelligent assistant for Frappe/ERPNext.",
-        "CORE PRINCIPLE: TO HELP users by executing ACTIONS. ALWAYS prefer tools over text.",
-        "NAVIGATION: For 'Go to', 'Open', 'Show', 'List' requests, use the `navigate` or `maps` tool. DO NOT NARRATE (e.g., don't say 'Navigating...'). JUST EXECUTE.",
-        "QUERIES: Use `list_documents` only if the user asks for data/stats (e.g. 'Show me top 5...').",
-        "NO HALLUCINATION: Do not make up IDs or data.",
-        "CONTEXT: Use the provided Route/DocType context."
+        "You are **OwlAI**, the high-performance intelligence layer for Frappe/ERPNext.",
+        "GOAL: Execute user requests with LIGHTNING speed and zero hallucination.",
+        
+        "### CORE PROTOCOLS:",
+        "1. **Direct Action**: If intent is clear (e.g. 'Create item X'), use the tool immediately. Don't ask for permission.",
+        "2. **Case-Perfect Linking**: When creating/finding records, provide a link: `[View {DocType} {Name}](/app/{slug}/{name})`.",
+        "   - **URGENT**: The `{name}` in the URL MUST match the tool output EXACTLY (case-sensitive). If the ID is 'Suraj', link MUST be `/app/customer/Suraj`.",
+        "   - `{slug}` is lowercase: 'Sales Order' -> 'sales-order'.",
+        "3. **Minimal Reasoning**: Only use chain-of-thought for complex logic. For simple CRUD, be brief and execute.",
+        "4. **Smart Schema**: Use `get_doctype_info` only if you are unsure of mandatory fields. Check cache results first."
     ]
     
-    # Inject Dynamic Context
+    # Inject minimal dynamic business context (Only essential)
     try:
-        
-        # Inject Route Context if provided via factory or if we can infer it
-        # NOTE: 'additional_context' is often passed to agent.run() at runtime, 
-        # but we can try to fetch a broad context here if possible. 
-        # For now, we trust the runtime injection in router.py, but we ensure instructions emphasize using it.
-        pass
-             
-        instructions.append(context_builder.get_system_context())
+        # 1. Environment & Persona (Cached)
+        instructions.append(context_builder.get_system_context()) 
+        # 2. Business Context
         instructions.append(context_builder.get_company_context())
+        # 3. User Identity
         instructions.append(context_builder.get_user_context())
-        instructions.append(context_builder.get_common_doctypes())
+        
+        # 4. Strict Persona Rule
+        instructions.append("""
+### SYSTEM PERSONA:
+- You are a precise execution agent. 
+- You REMEMBER that the current site is provided in metadata.
+- You NEVER guess or trial-and-error site names.
+- You ALWAYS use the exact casing for IDs. 'suraj' != 'Suraj'.
+- You are LIGHTNING fast because you skip unnecessary reasoning on repetitive tasks.
+""")
     except Exception as e:
         frappe.log_error(f"Context Build Error: {e}")
 
     if agent_doc and agent_doc.system_prompt:
-        if "OVERRIDE" in agent_doc.system_prompt:
-            instructions = [agent_doc.system_prompt.replace("OVERRIDE", "").strip()]
-        else:
-            instructions.append(agent_doc.system_prompt)
+        instructions.append(agent_doc.system_prompt)
         
-
-
     # 5. Tools
     tools_list = []
     
     # Identify enabled tools
     frappe_tools = []
-    native_tools = []
-    
     if agent_doc and agent_doc.tools:
         for t in agent_doc.tools:
             if t.enabled:
-                tool_name = t.tool # Name of the OwlAI Tool document
-                
-                if tool_name in ["Web Search", "DuckDuckGo", "Exa Search"]:
-                    # We now use the safe `web_search` method in FrappeToolkit for all these
-                    # So we just ensure 'web_search' is in the list for FrappeToolkit
-                    frappe_tools.append("web_search")
-                else:
-                    # Assume it's a Frappe Toolkit tool
-                    # Map standard names if needed, or pass directly
-                    frappe_tools.append(tool_name)
+                frappe_tools.append(t.tool)
     
-    # Always include FrappeToolkit (generic) if no specific tools selected, 
-    # OR if specific frappe tools are selected.
-    # If agent has NO tools defined, we give it everything by default (legacy behavior)
     if not agent_doc or not agent_doc.tools:
          tools_list.append(FrappeToolkit())
-    elif frappe_tools:
+    else:
          tools_list.append(FrappeToolkit(selected_tools=frappe_tools))
 
-    # Add Native Tools
-    tools_list.extend(native_tools)
-
-
-
     # 6. Instantiate Agent
-    
-    # Context Compression
     from agno.compression.manager import CompressionManager
     compression_manager = CompressionManager(
         model=model_instance,
         compress_tool_results=True,
-        compress_token_limit=10000,
+        compress_token_limit=5000, # More aggressive compression for speed
     )
     
-    extra_instructions = [
-        "Use `get_doctype_info(doctype=...)` if you need to know the field names before creating or updating a document.",
-        "Always double-check the 'name' (ID) of a document before updating it."
-    ]
-    instructions.extend(extra_instructions)
-
     agent = Agent(
         model=model_instance,
         tools=tools_list,
         db=FrappeStorage(), 
         session_id=conversation_id,
         instructions=instructions,
-        description=f"Agent: {agent_name}",
+        description=f"OwlAI Agent: {agent_name}",
         add_history_to_context=True, 
-        num_history_runs=5,
+        num_history_runs=3, # Reduced for faster context processing
         debug_mode=debug_mode,
         markdown=True,
-        # Compression & Memory
+        # Performance Settings
         compression_manager=compression_manager,
         enable_agentic_memory=True,
         enable_user_memories=True,

@@ -51,7 +51,8 @@ class CorePlugin(BasePlugin):
 
             # Utilities
             "frappe_utils",
-            "context_tools"
+            "context_tools",
+            "frappe_crud"
         ]
 
     def validate_environment(self):

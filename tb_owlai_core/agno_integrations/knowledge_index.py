@@ -33,14 +33,15 @@ def get_vector_db():
     site_path = frappe.get_site_path()
     db_path = os.path.join(site_path, "private", "owlai_lancedb")
     
-    embedder = OllamaEmbedder(id=model_name)
+    # nomic-embed-text is 768. 4096 is standard for llama/qwen-based embeddings.
+    dimensions = 768 if "nomic" in model_name else 4096
+    embedder = OllamaEmbedder(id=model_name, dimensions=dimensions)
     
     vector_db = LanceDb(
         table_name="owlai_knowledge",
         uri=db_path,
         embedder=embedder,
-        search_type="hybrid" # Hybrid requires tantivy, fallback to vector if fails? 
-        # For simplicity, let's stick to default or vector unless sure about tantivy
+        search_type="vector"
     )
     return vector_db
 
@@ -72,7 +73,7 @@ def index_document(doc):
                 raise Exception(f"Failed to fetch URL: {e}")
                 
         elif doc.source_type == "File":
-            # Handle Text/PDF files
+            # Handle Text/PDF/Excel/CSV files
             file_path = frappe.get_site_path(doc.file.lstrip("/"))
             if doc.file.endswith(".pdf"):
                 try:
@@ -82,6 +83,20 @@ def index_document(doc):
                         text_content += page.extract_text() + "\n"
                 except ImportError:
                      raise Exception("pypdf not installed. Please install it to index PDFs.")
+            elif doc.file.endswith((".xlsx", ".xls")):
+                try:
+                    import pandas as pd
+                    df = pd.read_excel(file_path)
+                    text_content = df.to_string() # Simple conversion for now
+                except ImportError:
+                    raise Exception("pandas and openpyxl are required for Excel indexing.")
+            elif doc.file.endswith(".csv"):
+                try:
+                    import pandas as pd
+                    df = pd.read_csv(file_path)
+                    text_content = df.to_string()
+                except ImportError:
+                    raise Exception("pandas is required for CSV indexing.")
             else:
                 # Assume text
                 with open(file_path, "r") as f:
@@ -92,11 +107,12 @@ def index_document(doc):
             raise Exception("No content extracted to index.")
 
         # 2. Create Agno Documents (Chunks)
-        # We manually chunk or let VectorDB handle it? 
-        # LanceDB's upsert in Agno usually expects Agno Documents
-        
         from agno.knowledge.chunking.recursive import RecursiveChunking
         
+        settings = frappe.get_single("OwlAI Settings")
+        chunk_size = getattr(settings, "chunk_size", 1000) or 1000
+        chunk_overlap = getattr(settings, "chunk_overlap", 100) or 100
+
         # Create base document first
         base_doc = AgnoDocument(
             content=text_content,
@@ -105,21 +121,23 @@ def index_document(doc):
                 "title": doc.title,
                 "source": doc.source_type,
                 "url": doc.url,
+                "company": frappe.defaults.get_user_default("Company")
             }
         )
 
-        chunker = RecursiveChunking(chunk_size=1000, overlap=100)
+        chunker = RecursiveChunking(chunk_size=chunk_size, overlap=chunk_overlap)
         igno_docs = chunker.chunk(base_doc)
             
         # 3. Upsert
-        # Check if table exists, create if not
-        # LanceDB in Agno handles this automatically usually on insert
-        vector_db.create() # Idempotent?
-        vector_db.upsert(igno_docs)
+        import hashlib
+        content_hash = hashlib.md5(text_content.encode()).hexdigest()
+        
+        vector_db.create() 
+        vector_db.upsert(content_hash=content_hash, documents=igno_docs)
         
         return {
             "chunks": len(igno_docs),
-            "vector_id": doc.name # We index by metadata, not single ID
+            "vector_id": doc.name 
         }
 
     except Exception as e:
@@ -140,7 +158,7 @@ def search_knowledge_base(query: str, limit: int = 5):
              hits.append({
                  "content": r.content,
                  "meta": r.meta_data,
-                 "score": r.score
+                 "score": getattr(r, "score", getattr(r, "reranking_score", 0.0))
              })
         return hits
     except Exception as e:

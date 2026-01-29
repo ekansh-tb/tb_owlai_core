@@ -59,11 +59,16 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="space-y-3">
+                        <label class="text-xs font-black text-gray-400 uppercase tracking-widest">AI Provider</label>
+                        <select v-model="settings.provider" class="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent-purple transition-all appearance-none cursor-pointer">
+                            <option value="Local (Ollama)" class="bg-gray-900">Local (Ollama)</option>
+                            <option value="Generative AI (Gemini)" class="bg-gray-900">Generative AI (Gemini)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-3">
                         <label class="text-xs font-black text-gray-400 uppercase tracking-widest">Default Model</label>
                         <select v-model="settings.model" class="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent-purple transition-all appearance-none cursor-pointer">
-                            <option value="llama3.2:3b-Ollama" class="bg-gray-900">llama3.2:3b-Ollama</option>
-                            <option value="qwen2.5:7b" class="bg-gray-900">qwen2.5:7b</option>
-                            <option value="gpt-4o" class="bg-gray-900">GPT-4o</option>
+                            <option v-for="m in availableModels" :key="m.name" :value="m.name" class="bg-gray-900">{{ m.name }}</option>
                         </select>
                     </div>
                     <div class="space-y-3">
@@ -205,12 +210,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { 
     Cpu, Sliders, Settings, Brain, Globe, Database, Info, 
     Trash2, RefreshCw, Layers, Zap, FileText, Plus 
 } from 'lucide-vue-next'
-import { createResource, Dialog, Button } from 'frappe-ui'
+import { createResource, Dialog, Button, call } from 'frappe-ui'
 
 const activeTab = ref('general')
 
@@ -222,7 +227,8 @@ const tabs = [
 ]
 
 const settings = reactive({
-    model: 'llama3.2:3b-Ollama',
+    provider: 'Local (Ollama)',
+    model: '',
     temperature: 0.7,
     system_prompt: '',
     enable_memory: true,
@@ -238,6 +244,42 @@ const intelligenceToggles = [
 ]
 
 // Resources
+const settingsResource = createResource({
+    url: 'frappe.client.get',
+    params: { doctype: 'OwlAI Settings', name: 'OwlAI Settings' },
+    auto: true,
+    onSuccess(data) {
+        settings.provider = data.provider || 'Local (Ollama)'
+        settings.model = data.provider === 'Local (Ollama)' ? data.ollama_model : data.gemini_model
+        settings.temperature = data.default_temperature || 0.7
+        settings.system_prompt = data.default_system_prompt || ''
+        settings.enable_memory = !!data.enable_memory
+        settings.enable_compression = !!data.enable_compression
+        settings.agentic_reasoning = !!data.agentic_reasoning
+        settings.contextLimit = data.context_limit || 12000
+    }
+})
+
+const modelsResource = createResource({
+    url: 'frappe.client.get_list',
+    params: {
+        doctype: 'OwlAI Model',
+        fields: ['name', 'provider'],
+        limit: 100
+    },
+    auto: true
+})
+
+const availableModels = computed(() => {
+    if (!modelsResource.data) return []
+    // Filter based on provider logic
+    return modelsResource.data.filter(m => {
+        if (settings.provider.includes('Ollama')) return m.provider.includes('Ollama')
+        if (settings.provider.includes('Gemini')) return m.provider.includes('Gemini')
+        return true
+    })
+})
+
 const memories = createResource({
     url: 'frappe.client.get_list',
     params: {
@@ -251,26 +293,45 @@ const memories = createResource({
 
 const knowledge = createResource({
     url: 'frappe.client.get_list',
-    params: {
+    params: () => ({
         doctype: 'OwlAI Knowledge Base',
-        fields: ['name', 'title', 'creation', 'status'],
+        fields: ['name', 'title', 'creation', 'status', 'source_type', 'error'],
         limit: 10,
         order_by: 'creation desc'
-    },
+    }),
     auto: true
 })
 
-function saveSettings() {
-    // Implement save logic via frappe-ui resource or call
-    alert('Settings synced successfully.')
+async function saveSettings() {
+    try {
+        await call('frappe.client.set_value', {
+            doctype: 'OwlAI Settings',
+            name: 'OwlAI Settings',
+            fieldname: {
+                provider: settings.provider,
+                [settings.provider === 'Local (Ollama)' ? 'ollama_model' : 'gemini_model']: settings.model,
+                default_temperature: settings.temperature,
+                default_system_prompt: settings.system_prompt,
+                enable_memory: settings.enable_memory,
+                enable_compression: settings.enable_compression,
+                agentic_reasoning: settings.agentic_reasoning,
+                context_limit: settings.contextLimit
+            }
+        })
+        alert('Settings synced successfully.')
+        settingsResource.reload()
+    } catch (e) {
+        console.error(e)
+        let msg = 'Failed to save settings.'
+        if (e.messages && e.messages.length) msg = e.messages.join(', ')
+        else if (e.message) msg = e.message
+        alert(msg)
+    }
 }
 
 async function deleteMemory(name) {
     if (confirm('Delete this memory?')) {
-        await createResource({
-            url: 'frappe.client.delete',
-            params: { doctype: 'OwlAI User Memory', name }
-        }).submit()
+        await call('frappe.client.delete', { doctype: 'OwlAI User Memory', name })
         memories.reload()
     }
 }
@@ -292,22 +353,21 @@ const newDoc = reactive({
 
 async function idxResource() {
     if (!newDoc.title) return alert('Title is required')
+    if (newDoc.source_type === 'URL' && !newDoc.url) return alert('URL is required')
+    if (newDoc.source_type === 'Text' && !newDoc.content) return alert('Content is required')
     
     try {
         indexing.value = true
-        await createResource({
-            url: 'frappe.client.insert',
-            params: {
-                doc: {
-                    doctype: 'OwlAI Knowledge Base',
-                    title: newDoc.title,
-                    source_type: newDoc.source_type,
-                    url: newDoc.url,
-                    content: newDoc.content,
-                    status: 'Pending'
-                }
+        await call('frappe.client.insert', {
+            doc: {
+                doctype: 'OwlAI Knowledge Base',
+                title: newDoc.title,
+                source_type: newDoc.source_type,
+                url: newDoc.source_type === 'URL' ? newDoc.url : undefined,
+                content: newDoc.source_type === 'Text' ? newDoc.content : undefined,
+                status: 'Pending'
             }
-        }).submit()
+        })
         
         showIndexModal.value = false
         // Reset
@@ -317,6 +377,7 @@ async function idxResource() {
         
         // Refresh list
         knowledge.reload()
+        alert('Indexing started. The agent will process this in the background.')
     } catch (e) {
         console.error(e)
         alert('Failed to start indexing.')

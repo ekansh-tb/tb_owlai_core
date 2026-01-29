@@ -1,0 +1,93 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "format:RUN-{YYYY}-{MM}-{#####}",
+    "creation": "2024-01-29 10:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "crew",
+        "status",
+        "section_break_result",
+        "result",
+        "full_output",
+        "column_break_meta",
+        "started_at",
+        "completed_at"
+    ],
+    "fields": [
+        {
+            "fieldname": "crew",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Crew",
+            "options": "OwlAI Crew",
+            "reqd": 1
+        },
+        {
+            "default": "Pending",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Pending\nRunning\nCompleted\nFailed"
+        },
+        {
+            "fieldname": "section_break_result",
+            "fieldtype": "Section Break",
+            "label": "Result"
+        },
+        {
+            "fieldname": "result",
+            "fieldtype": "Text Editor",
+            "label": "Final Result"
+        },
+        {
+            "fieldname": "full_output",
+            "fieldtype": "Long Text",
+            "label": "Full Output Log"
+        },
+        {
+            "fieldname": "column_break_meta",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "started_at",
+            "fieldtype": "Datetime",
+            "label": "Started At",
+            "read_only": 1
+        },
+        {
+            "fieldname": "completed_at",
+            "fieldtype": "Datetime",
+            "label": "Completed At",
+            "read_only": 1
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2024-01-29 10:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Crew Run",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+}

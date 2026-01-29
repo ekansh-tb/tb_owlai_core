@@ -83,11 +83,25 @@ class ToolRegistry:
         """
         tool_doc = self.get_tool_doc(tool_name)
         
+        # --- CACHING LAYER ---
+        from tb_owlai_core.utils.cache import OwlCache
+        
+        # Only cache if explicitly enabled in the Tool Doc
+        use_cache = tool_doc and tool_doc.enable_cache
+        if use_cache:
+            cache_namespace = f"tool:{tool_name}"
+            cached_result = OwlCache.get(cache_namespace, arguments)
+            if cached_result is not None:
+                return cached_result
+        # ---------------------
+
         if not tool_doc:
             # Fallback to direct plugin lookup (Legacy/Unsynced)
             tool = self.plugin_manager.get_tool(tool_name)
             if tool:
-                return tool._safe_execute(arguments)
+                res = tool._safe_execute(arguments)
+                if use_cache: OwlCache.set(cache_namespace, arguments, res)
+                return res
             return f"Error: Tool '{tool_name}' not found."
 
         # 1. Handle Python Method (Direct Call)
@@ -97,14 +111,17 @@ class ToolRegistry:
                  # It's a plugin tool, use manager
                  tool = self.plugin_manager.get_tool(tool_name)
                  if tool:
-                     return tool._safe_execute(arguments)
+                     res = tool._safe_execute(arguments)
+                     if use_cache: OwlCache.set(cache_namespace, arguments, res)
+                     return res
                  return f"Error: Underlying Plugin for '{tool_name}' not found."
             
             # Real Dotted Path Execution
             try:
                 # Security: You might want to restrict this to whitelisted methods or specific allowed paths
-                # usage: frappe.client.get_list -> frappe.call("frappe.client.get_list", ...)
-                return frappe.call(tool_doc.method_path, **arguments)
+                res = frappe.call(tool_doc.method_path, **arguments)
+                if use_cache: OwlCache.set(cache_namespace, arguments, res)
+                return res
             except Exception as e:
                 frappe.log_error(f"Tool Execution Error: {tool_name}")
                 return f"Error executing {tool_name}: {str(e)}"

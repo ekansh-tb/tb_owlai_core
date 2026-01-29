@@ -6,7 +6,9 @@
     "editable_grid": 1,
     "engine": "InnoDB",
     "field_order": [
-        "task"
+        "task",
+        "async_execution",
+        "context"
     ],
     "fields": [
         {
@@ -16,6 +18,18 @@
             "label": "Task",
             "options": "OwlAI Task",
             "reqd": 1
+        },
+        {
+            "default": "0",
+            "fieldname": "async_execution",
+            "fieldtype": "Check",
+            "in_list_view": 1,
+            "label": "Async"
+        },
+        {
+            "fieldname": "context",
+            "fieldtype": "Small Text",
+            "label": "Context (Task Names/IDs)"
         }
     ],
     "istable": 1,

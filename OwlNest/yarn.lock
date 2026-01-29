@@ -1086,25 +1086,24 @@
     "@vueuse/shared" "10.11.1"
     vue-demi ">=0.14.8"
 
-"@vueuse/core@^12.5.0":
-  version "12.8.2"
-  resolved "https://registry.yarnpkg.com/@vueuse/core/-/core-12.8.2.tgz#007c6dd29a7d1f6933e916e7a2f8ef3c3f968eaa"
-  integrity sha512-HbvCmZdzAu3VGi/pWYm5Ut+Kd9mn1ZHnn4L5G8kOQTPs/IwIAmJoBrmYk2ckLArgMXZj0AW3n5CAejLUO+PhdQ==
+"@vueuse/core@^14.1.0":
+  version "14.1.0"
+  resolved "https://registry.yarnpkg.com/@vueuse/core/-/core-14.1.0.tgz#274e98e591a505333b7dfb2bcaf7b4530a10b9c9"
+  integrity sha512-rgBinKs07hAYyPF834mDTigH7BtPqvZ3Pryuzt1SD/lg5wEcWqvwzXXYGEDb2/cP0Sj5zSvHl3WkmMELr5kfWw==
   dependencies:
     "@types/web-bluetooth" "^0.0.21"
-    "@vueuse/metadata" "12.8.2"
-    "@vueuse/shared" "12.8.2"
-    vue "^3.5.13"
+    "@vueuse/metadata" "14.1.0"
+    "@vueuse/shared" "14.1.0"
 
 "@vueuse/metadata@10.11.1":
   version "10.11.1"
   resolved "https://registry.yarnpkg.com/@vueuse/metadata/-/metadata-10.11.1.tgz#209db7bb5915aa172a87510b6de2ca01cadbd2a7"
   integrity sha512-IGa5FXd003Ug1qAZmyE8wF3sJ81xGLSqTqtQ6jaVfkeZ4i5kS2mwQF61yhVqojRnenVew5PldLyRgvdl4YYuSw==
 
-"@vueuse/metadata@12.8.2":
-  version "12.8.2"
-  resolved "https://registry.yarnpkg.com/@vueuse/metadata/-/metadata-12.8.2.tgz#6cb3a4e97cdcf528329eebc1bda73cd7f64318d3"
-  integrity sha512-rAyLGEuoBJ/Il5AmFHiziCPdQzRt88VxR+Y/A/QhJ1EWtWqPBBAxTAFaSkviwEuOEZNtW8pvkPgoCZQ+HxqW1A==
+"@vueuse/metadata@14.1.0":
+  version "14.1.0"
+  resolved "https://registry.yarnpkg.com/@vueuse/metadata/-/metadata-14.1.0.tgz#70fc2e94775e4a07369f11f86f6f0a465b04a381"
+  integrity sha512-7hK4g015rWn2PhKcZ99NyT+ZD9sbwm7SGvp7k+k+rKGWnLjS/oQozoIZzWfCewSUeBmnJkIb+CNr7Zc/EyRnnA==
 
 "@vueuse/shared@10.11.1", "@vueuse/shared@^10.11.0":
   version "10.11.1"
@@ -1113,12 +1112,10 @@
   dependencies:
     vue-demi ">=0.14.8"
 
-"@vueuse/shared@12.8.2", "@vueuse/shared@^12.5.0":
-  version "12.8.2"
-  resolved "https://registry.yarnpkg.com/@vueuse/shared/-/shared-12.8.2.tgz#b9e4611d0603629c8e151f982459da394e22f930"
-  integrity sha512-dznP38YzxZoNloI0qpEfpkms8knDtaoQ6Y/sfS0L7Yki4zh40LFHEhur0odJC6xTHG5dxWVPiUWBXn+wCG2s5w==
-  dependencies:
-    vue "^3.5.13"
+"@vueuse/shared@14.1.0", "@vueuse/shared@^14.1.0":
+  version "14.1.0"
+  resolved "https://registry.yarnpkg.com/@vueuse/shared/-/shared-14.1.0.tgz#49b2face86a9c0c52e20eaf4c732a0223276c11f"
+  integrity sha512-EcKxtYvn6gx1F8z9J5/rsg3+lTQnvOruQd8fUecW99DCK04BkWD7z5KQ/wTAx+DazyoEE9dJt/zV8OIEQbM6kw==
 
 acorn@^8.14.1, acorn@^8.15.0:
   version "8.15.0"
@@ -1214,9 +1211,9 @@ base64-js@^1.3.1:
   integrity sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==
 
 baseline-browser-mapping@^2.9.0:
-  version "2.9.18"
-  resolved "https://registry.yarnpkg.com/baseline-browser-mapping/-/baseline-browser-mapping-2.9.18.tgz#c8281693035a9261b10d662a5379650a6c2d1ff7"
-  integrity sha512-e23vBV1ZLfjb9apvfPk4rHVu2ry6RIr2Wfs+O324okSidrX7pTAnEJPCh/O5BtRlr7QtZI7ktOP3vsqr7Z5XoA==
+  version "2.9.19"
+  resolved "https://registry.yarnpkg.com/baseline-browser-mapping/-/baseline-browser-mapping-2.9.19.tgz#3e508c43c46d961eb4d7d2e5b8d1dd0f9ee4f488"
+  integrity sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg==
 
 binary-extensions@^2.0.0:
   version "2.3.0"
@@ -2718,17 +2715,17 @@ readdirp@~3.6.0:
     picomatch "^2.2.1"
 
 reka-ui@^2.5.0:
-  version "2.7.0"
-  resolved "https://registry.yarnpkg.com/reka-ui/-/reka-ui-2.7.0.tgz#906697e744e9a9682f89372a46ef384d4500eae7"
-  integrity sha512-m+XmxQN2xtFzBP3OAdIafKq7C8OETo2fqfxcIIxYmNN2Ch3r5oAf6yEYCIJg5tL/yJU2mHqF70dCCekUkrAnXA==
+  version "2.8.0"
+  resolved "https://registry.yarnpkg.com/reka-ui/-/reka-ui-2.8.0.tgz#612023ad40c5c10999aef304f2b828cdd08da6a8"
+  integrity sha512-N4JOyIrmDE7w2i06WytqcV2QICubtS2PsK5Uo8FIMAgmO13KhUAgAByP26cXjjm2oF/w7rTyRs8YaqtvaBT+SA==
   dependencies:
     "@floating-ui/dom" "^1.6.13"
     "@floating-ui/vue" "^1.1.6"
     "@internationalized/date" "^3.5.0"
     "@internationalized/number" "^3.5.0"
     "@tanstack/vue-virtual" "^3.12.0"
-    "@vueuse/core" "^12.5.0"
-    "@vueuse/shared" "^12.5.0"
+    "@vueuse/core" "^14.1.0"
+    "@vueuse/shared" "^14.1.0"
     aria-hidden "^1.2.4"
     defu "^6.1.4"
     ohash "^2.0.11"

@@ -8,8 +8,14 @@
     "engine": "InnoDB",
     "field_order": [
         "crew_name",
+        "section_break_config",
         "execution_process",
+        "manager_agent",
+        "planning",
+        "memory",
         "verbose",
+        "output_log_file",
+        "share_crew",
         "agents",
         "tasks"
     ],
@@ -23,6 +29,11 @@
             "unique": 1
         },
         {
+            "fieldname": "section_break_config",
+            "fieldtype": "Section Break",
+            "label": "Configuration"
+        },
+        {
             "default": "Sequential",
             "fieldname": "execution_process",
             "fieldtype": "Select",
@@ -31,10 +42,41 @@
             "reqd": 1
         },
         {
+            "fieldname": "manager_agent",
+            "fieldtype": "Link",
+            "label": "Manager Agent",
+            "options": "OwlAI Agent",
+            "depends_on": "eval:doc.execution_process=='Hierarchical'"
+        },
+        {
+            "default": "0",
+            "fieldname": "planning",
+            "fieldtype": "Check",
+            "label": "Planning Mode"
+        },
+        {
+            "default": "0",
+            "fieldname": "memory",
+            "fieldtype": "Check",
+            "label": "Use Memory"
+        },
+        {
             "default": "0",
             "fieldname": "verbose",
             "fieldtype": "Check",
             "label": "Verbose"
+        },
+        {
+            "default": "0",
+            "fieldname": "output_log_file",
+            "fieldtype": "Check",
+            "label": "Output Log File"
+        },
+        {
+            "default": "0",
+            "fieldname": "share_crew",
+            "fieldtype": "Check",
+            "label": "Share Crew"
         },
         {
             "fieldname": "agents",

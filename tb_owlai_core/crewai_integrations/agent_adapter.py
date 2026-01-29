@@ -6,11 +6,15 @@ from tb_owlai_core.utils.plugin_manager import PluginManager
 class AgentAdapter:
     def __init__(self):
         self.plugin_manager = PluginManager()
+        self._cache = {}
 
     def get_agent(self, agent_name):
         """
         Converts an OwlAI Agent DocType to a crewai.Agent object.
         """
+        if agent_name in self._cache:
+            return self._cache[agent_name]
+
         if not frappe.db.exists("OwlAI Agent", agent_name):
             frappe.throw(f"OwlAI Agent '{agent_name}' not found.")
 
@@ -35,6 +39,9 @@ class AgentAdapter:
             tools=tools,
             llm=model_name # CrewAI supports passing model name string (provider/model) often
         )
+        
+        self._cache[agent_name] = agent
+        return agent
 
     def _get_tools(self, tools_table):
         """

@@ -20,25 +20,39 @@ class GetDoctypeInfo(BaseTool):
              return {"error": f"DocType '{doctype}' does not exist."}
 
         try:
-            # Use cached metadata
             meta = frappe.get_meta(doctype)
             
-            # Simple Schema Summary
             fields_data = []
-            
-            # Standard Standard Field Types to include in summary
-            # We skip 'Section Break', 'Column Break' etc as they are UI only
             skip_types = ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold", "Spacer"]
             
             for df in meta.fields:
                 if df.fieldtype not in skip_types and not df.hidden:
-                    fields_data.append({
+                    field_info = {
                         "fieldname": df.fieldname,
                         "label": df.label,
                         "fieldtype": df.fieldtype,
                         "reqd": df.reqd,
-                        "options": df.options
-                    })
+                        "options": df.options,
+                        "description": df.description
+                    }
+                    
+                    # If it's a child table, get its schema too
+                    if df.fieldtype == "Table" and df.options:
+                        try:
+                            child_meta = frappe.get_meta(df.options)
+                            child_fields = []
+                            for cdf in child_meta.fields:
+                                if cdf.fieldtype not in skip_types and not cdf.hidden:
+                                    child_fields.append({
+                                        "fieldname": cdf.fieldname,
+                                        "label": cdf.label,
+                                        "fieldtype": cdf.fieldtype,
+                                        "reqd": cdf.reqd
+                                    })
+                            field_info["child_schema"] = child_fields[:15] # Limit child fields
+                        except: pass
+                        
+                    fields_data.append(field_info)
             
             # Sort: Mandatory fields first
             fields_data.sort(key=lambda x: x['reqd'], reverse=True)
@@ -46,25 +60,16 @@ class GetDoctypeInfo(BaseTool):
             # Metadata Info
             info = {
                  "title_field": meta.title_field or "name",
-                 "description": meta.description,
                  "is_submittable": meta.is_submittable,
                  "istable": meta.istable,
-                 "issingle": meta.issingle
+                 "naming_rule": meta.autoname
             }
 
-            # Permissions
-            permissions = {
-                "read": frappe.has_permission(doctype, "read"),
-                "write": frappe.has_permission(doctype, "write"),
-                "create": frappe.has_permission(doctype, "create"),
-                "delete": frappe.has_permission(doctype, "delete"),
-            }
-            
             return {
                 "doctype": doctype,
                 "meta": info,
-                "fields": fields_data[:60], # Limit to avoid context overflow, but after sorting mandatory first
-                "permissions": permissions
+                "fields": fields_data[:50], # Limit to avoid context overflow
+                "message": f"To create a {doctype}, ensure all fields marked 'reqd: True' are provided."
             }
         except Exception as e:
             return {"error": str(e)}

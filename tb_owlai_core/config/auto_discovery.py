@@ -63,6 +63,13 @@ def discover_and_register_providers():
     # 6. Create Default Agent
     _ensure_default_agent(local_model)
 
+    # 7. Seed Knowledge Base with Business context
+    try:
+        from tb_owlai_core.agno_integrations.auto_seed import seed_knowledge_base
+        seed_knowledge_base()
+    except Exception as e:
+        frappe.log_error(f"KB Auto-Seeding during Discovery failed: {e}")
+
 
 
 def _ensure_provider_and_model(provider_name, model_name, api_key=None, api_base=None):

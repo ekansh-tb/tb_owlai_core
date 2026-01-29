@@ -27,6 +27,10 @@
                 <Settings class="w-5 h-5 group-hover:rotate-45 transition-transform" />
                 <span>Settings</span>
              </router-link>
+             <router-link to="/skills" class="nav-item group">
+                <Wrench class="w-5 h-5 group-hover:text-yellow-400 transition-colors" />
+                <span>Skills</span>
+             </router-link>
           </nav>
 
           <div class="mt-auto p-4 border-t border-white/5">
@@ -61,7 +65,7 @@
              </div>
           </header>
 
-          <div class="flex-1 overflow-hidden p-6 md:p-8 pt-0">
+          <div class="flex-1 overflow-y-auto p-6 md:p-8 pt-0">
              <router-view v-slot="{ Component }">
                 <transition name="fade" mode="out-in">
                    <component :is="Component" />
@@ -80,7 +84,7 @@
 
 <script setup>
 import { session } from './data/session'
-import { LayoutDashboard, MessageSquare, Settings, LogOut } from 'lucide-vue-next'
+import { LayoutDashboard, MessageSquare, Settings, LogOut, Wrench } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()

@@ -42,8 +42,11 @@ class UpdateDocument(BaseTool):
             doc.save(ignore_permissions=True) # Checked above
             frappe.db.commit()
 
+            slug = doctype.lower().replace(" ", "-")
             return {
                 "name": doc.name,
+                "doctype": doctype,
+                "url": f"/app/{slug}/{doc.name}",
                 "status": "Updated",
                 "message": f"Updated {doctype} '{name}' successfully."
             }

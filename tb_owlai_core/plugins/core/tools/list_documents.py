@@ -40,6 +40,10 @@ class ListDocuments(BaseTool):
                 limit_page_length=limit_page_length,
                 order_by=order_by
             )
+            slug = doctype.lower().replace(" ", "-")
+            for item in data:
+                if 'name' in item:
+                    item['url'] = f"/app/{slug}/{item['name']}"
             
             return {
                 "doctype": doctype,

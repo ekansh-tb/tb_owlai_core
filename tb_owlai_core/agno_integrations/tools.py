@@ -35,6 +35,10 @@ class GetDocumentArgs(BaseModel):
     doctype: str = Field(..., description="The DocType of the document.")
     name: str = Field(..., description="The unique name (ID) of the document.")
 
+class RunCrewArgs(BaseModel):
+    crew_name: str = Field(..., description="The name of the OwlAI Crew to execute.")
+    inputs: Optional[Dict[str, Any]] = Field(None, description="Input parameters/context for the Crew.")
+
 class FrappeToolkit(Toolkit):
     def __init__(self, selected_tools: Optional[List[str]] = None):
         super().__init__(name="frappe_toolkit")
@@ -67,8 +71,14 @@ class FrappeToolkit(Toolkit):
                 self.register(func)
 
     def _exec(self, tool_name: str, **kwargs):
-        """Helper to execute tool with proper dictionary arguments"""
-        return self.registry.execute(tool_name, kwargs)
+        """Helper to execute tool and return the unwrapped result."""
+        res = self.registry.execute(tool_name, kwargs)
+        if isinstance(res, dict):
+            if res.get("success"):
+                return res.get("result")
+            elif "error" in res:
+                return f"Error: {res.get('error')}"
+        return res
 
     def _parse_dict(self, value: Union[Dict, str, None]) -> Optional[Dict]:
         if value is None: return None
@@ -143,6 +153,8 @@ class FrappeToolkit(Toolkit):
             else: parsed_fields = ["name"] # Fallback
             
         docs = self._exec("list_documents", doctype=doctype, filters=parsed_filters, fields=parsed_fields, limit_page_length=limit_page_length)
+        if isinstance(docs, dict) and "data" in docs:
+             docs = docs.get("data", [])
         
         # Format as Strings
         results = []
@@ -168,15 +180,27 @@ class FrappeToolkit(Toolkit):
         """
         return self._exec("search_documents", query=query, doctype=doctype)
     
-    def search_knowledge_base(self, query: str) -> list:
+    def search_knowledge_base(self, query: str) -> str:
         """
         Search the OwlAI Knowledge Base (Vector Store) for documentation and policies.
+        Returns the top matching chunks with metadata.
         """
         try:
             from tb_owlai_core.agno_integrations.knowledge_index import search_knowledge_base
-            return search_knowledge_base(query)
+            results = search_knowledge_base(query)
+            
+            if not results:
+                return "No matching information found in the knowledge base."
+            
+            formatted_results = "### Knowledge Base Results\n\n"
+            for i, r in enumerate(results, 1):
+                source = r['meta'].get('title') or r['meta'].get('doc_name') or "Unknown"
+                formatted_results += f"{i}. **Source: {source}** (Score: {r['score']:.4f})\n"
+                formatted_results += f"   {r['content']}\n\n"
+            
+            return formatted_results
         except Exception as e:
-            return [f"Error searching knowledge base: {e}"]
+            return f"Error searching knowledge base: {e}"
     
     def web_search(self, query: str) -> str:
         """
@@ -215,29 +239,29 @@ class FrappeToolkit(Toolkit):
             doctype (str): The DocType of the document.
             name (str): The name (ID) of the document.
         """
-        return self._exec("get_document_v2", doctype=doctype, name=name)
+        return self._exec("get_document", doctype=doctype, name=name)
 
-    def create_document(self, doctype: str, properties: Union[dict, str]) -> dict:
+    def create_document(self, doctype: str, data: Union[dict, str]) -> dict:
         """
         Create a new document.
         Use `get_doctype_info` first to see which fields are required.
         
         Args:
             doctype (str): The DocType to create.
-            properties (dict): Fields and values for the new document.
+            data (dict): Fields and values for the new document.
         """
-        return self._exec("create_document_v2", doctype=doctype, properties=self._parse_dict(properties))
+        return self._exec("create_document", doctype=doctype, data=self._parse_dict(data))
 
-    def update_document(self, doctype: str, name: str, properties: Union[dict, str]) -> dict:
+    def update_document(self, doctype: str, name: str, data: Union[dict, str]) -> dict:
         """
         Update an existing document.
         
         Args:
             doctype (str): The DocType of the document.
             name (str): The name (ID) of the document to update.
-            properties (dict): Fields and values to update.
+            data (dict): Fields and values to update.
         """
-        return self._exec("update_document_v2", doctype=doctype, name=name, properties=self._parse_dict(properties))
+        return self._exec("update_document", doctype=doctype, name=name, data=self._parse_dict(data))
 
     def delete_document(self, doctype: str, name: str) -> dict:
         """
@@ -247,7 +271,7 @@ class FrappeToolkit(Toolkit):
             doctype (str): The DocType of the document.
             name (str): The name (ID) of the document to delete.
         """
-        return self._exec("delete_document_v2", doctype=doctype, name=name)
+        return self._exec("delete_document", doctype=doctype, name=name)
 
     def frappe_utils(self, function: str, args: Optional[list] = None, kwargs: Optional[dict] = None) -> dict:
         """
@@ -262,10 +286,6 @@ class FrappeToolkit(Toolkit):
             dict: Result of the function.
         """
         return self._exec("frappe_utils", function=function, args=args or [], kwargs=kwargs or {})
-
-class RunCrewArgs(BaseModel):
-    crew_name: str = Field(..., description="The name of the OwlAI Crew to execute.")
-    inputs: Optional[Dict[str, Any]] = Field(None, description="Input parameters/context for the Crew.")
 
     def maps(self, doctype: Optional[str] = None, page: Optional[str] = None, view: str = "List", filters: Optional[dict] = None) -> dict:
         """

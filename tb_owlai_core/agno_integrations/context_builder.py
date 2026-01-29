@@ -2,14 +2,32 @@
 import frappe
 import json
 
+def get_active_site():
+    """
+    Detects and caches the active Frappe site to avoid redundant 'bench' checks.
+    """
+    from tb_owlai_core.utils.cache import OwlCache
+    
+    cached_site = OwlCache.get("system", "active_site")
+    if cached_site:
+        return cached_site
+    
+    # Discovery logic
+    site = frappe.local.site
+    if site:
+        OwlCache.set("system", "active_site", site, 86400)
+        return site
+        
+    return "unknown"
+
 def get_system_context():
     """
     Returns information about the system, installed apps, and versions.
     """
+    site = get_active_site()
     apps = frappe.get_installed_apps()
     app_info = []
     for app in apps:
-        version = frappe.get_attr(f"{app}.__version__") if hasattr(frappe, "get_attr") else "Unknown"
         try:
             import importlib
             module = importlib.import_module(app)
@@ -19,10 +37,16 @@ def get_system_context():
         app_info.append(f"{app} ({version})")
     
     return f"""
-    System Information:
+    ### Environment Metadata:
+    - Active Site: {site}
+    - Bench Environment: Ready
     - Framework: Frappe / ERPNext
-    - Site: {frappe.local.site}
     - Installed Apps: {', '.join(app_info)}
+    
+    ### Rules for Scripts/Commands:
+    1. Always use `bench --site {site}` for any CLI operations.
+    2. Prefer `frappe.call` or `frappe.db` over direct shell scripts where possible.
+    3. If executing a python script, ensure it starts with `import frappe` and uses the current site context.
     """
 
 def get_company_context():

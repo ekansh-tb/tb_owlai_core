@@ -27,10 +27,12 @@
                     <div v-for="i in 3" :key="i" class="w-10 h-10 rounded-full border-2 border-[#0a0a0a] bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-[10px] font-bold text-gray-400">
                         <Bot class="w-5 h-5" v-if="i === 1"/>
                         <Cpu v-else-if="i === 2" class="w-5 h-5" />
-                        <span v-else>+2</span>
+                        <span v-else>+{{ Math.max(0, (agentsResource.data?.length || 0) - 2) }}</span>
                     </div>
                 </div>
-                <span class="text-xs text-gray-600 font-mono uppercase tracking-widest ml-2">4 Agents Online</span>
+                <span class="text-xs text-gray-600 font-mono uppercase tracking-widest ml-2">
+                    {{ agentsResource.data?.length || 0 }} Agents Available
+                </span>
             </div>
         </div>
     </section>
@@ -70,9 +72,9 @@
             <div class="flex items-center justify-between">
                  <h2 class="text-xl font-bold text-white flex items-center gap-3">
                     <Bot class="w-6 h-6 text-accent-purple" />
-                    Available Agents
+                    Available Agents ({{ agents.length }})
                  </h2>
-                 <button class="text-xs text-accent-purple font-bold hover:underline">Manage All</button>
+                 <button class="text-xs text-accent-purple font-bold hover:underline" @click="agentsResource.reload()">Refresh</button>
             </div>
             
             <div class="space-y-1">
@@ -132,15 +134,57 @@
 import { computed } from 'vue'
 import { 
     Activity, Users, FileText, Zap, UserPlus, Search, Settings, 
-    Bot, Sparkles, LayoutGrid, ArrowRight, History, MessageSquare, Brain, Cpu
+    Bot, Sparkles, LayoutGrid, ArrowRight, History, MessageSquare, Brain, Cpu, Wrench
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { createResource } from 'frappe-ui'
 import { userResource } from '../data/user'
 
 const router = useRouter()
 
 const userName = computed(() => {
     return userResource.data?.full_name || 'Innovator'
+})
+
+const agentsResource = createResource({
+    url: 'frappe.client.get_list',
+    params: {
+        doctype: 'OwlAI Agent',
+        fields: ['name', 'agent_role', 'role'],
+        limit: 20
+    },
+    auto: true
+})
+
+const logsResource = createResource({
+    url: 'frappe.client.get_list',
+    params: {
+        doctype: 'OwlAI Message',
+        fields: ['name', 'content', 'creation', 'role'],
+        limit: 10,
+        order_by: 'creation desc'
+    },
+    auto: true
+})
+
+const agents = computed(() => {
+    if (!agentsResource.data) return []
+    return agentsResource.data.map(a => ({
+        name: a.name,
+        role: a.agent_role || 'General Assistant',
+        status: 'Online'
+    }))
+})
+
+const logs = computed(() => {
+    if (!logsResource.data) return []
+    return logsResource.data.map(l => ({
+        id: l.name,
+        time: l.creation ? new Date(l.creation).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-',
+        action: l.role === 'user' ? 'User Input' : 'Agent Response',
+        details: l.content,
+        dotColor: l.role === 'user' ? 'bg-accent-cyan' : 'bg-accent-purple'
+    }))
 })
 
 const capabilities = [
@@ -159,11 +203,11 @@ const capabilities = [
         action: () => openDeskRoute('List/OwlAI Knowledge Base')
     },
     { 
-        title: 'Action Center', 
-        description: 'Orchestrate Frappe workflows and automate document tasks.', 
-        icon: Zap, 
+        title: 'Skills Hub', 
+        description: 'Manage and discover capabilities for your agents.', 
+        icon: Wrench, 
         color: 'from-yellow-400 to-orange-600',
-        action: () => openDeskRoute('List/OwlAI Analytics')
+        action: () => router.push('/skills')
     },
     { 
         title: 'System Settings', 
@@ -172,18 +216,6 @@ const capabilities = [
         color: 'from-gray-400 to-gray-600',
         action: () => router.push('/settings')
     },
-]
-
-const agents = [
-    { name: 'Actionable Agent', role: 'Frappe Desk Assistant', status: 'Online' },
-    { name: 'Research Agent', role: 'Web Search & Synthesis', status: 'Online' },
-    { name: 'Policy Agent', role: 'Internal Knowledge Expert', status: 'Online' }
-]
-
-const logs = [
-    { id: 1, time: '10 mins ago', action: 'Document Created', details: 'Sales Order SO-2024-001', dotColor: 'bg-accent-purple' },
-    { id: 2, time: '2 hours ago', action: 'Knowledge Indexed', details: 'HR Policy Manual Update', dotColor: 'bg-accent-cyan' },
-    { id: 3, time: 'Yesterday', action: 'Tool Execution', details: 'System Health Check Dispatched', dotColor: 'bg-yellow-500' },
 ]
 
 function openDeskRoute(route) {

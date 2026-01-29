@@ -21,78 +21,96 @@ class CreateDocument(BaseTool):
         doctype = arguments.get("doctype")
         data = arguments.get("data", {})
         submit = arguments.get("submit", False)
+        # Handle 'properties' as alias for 'data' for backward compatibility/Anekantvada
+        if not data and "properties" in arguments:
+            data = arguments.get("properties", {})
+            
         validate_only = arguments.get("validate_only", False)
 
         if not frappe.db.exists("DocType", doctype):
             return {"error": f"DocType '{doctype}' does not exist."}
 
-        # Heuristic: Map 'title' to 'description' if 'title' is not a valid field but 'description' is mandatory and missing
-        # This fixes common LLM hallucinations for simple DocTypes like ToDo
         try:
             meta = frappe.get_meta(doctype)
-            
-            # Strict Field Validation: Check if provided fields actually exist in the DocType
-            # This prevents the agent from hallucinating fields (e.g., 'join_date' instead of 'date_of_joining')
             valid_fields = {f.fieldname for f in meta.fields}
             valid_fields.update(["name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "doctype", "flags", "_user_tags", "_comments", "_assign", "_liked_by"])
             
             # --- SMART FIELD MAPPING ---
-            # Create a mapping of Label -> Fieldname to handle cases where the agent uses the UI label
-            # instead of the internal fieldname.
             field_map = {}
             for f in meta.fields:
                 if f.label:
                     field_map[f.label.lower()] = f.fieldname
-                field_map[f.fieldname] = f.fieldname # Ensure direct mapping works too
-            
-            # Map standard fields
-            standard_fields = ["name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "doctype", "flags", "_user_tags", "_comments", "_assign", "_liked_by"]
-            for sf in standard_fields:
-                field_map[sf] = sf
+                field_map[f.fieldname] = f.fieldname
 
             # Process data and remap keys
             new_data = {}
             for key, value in data.items():
                 lower_key = key.lower()
-                clean_key = lower_key.replace("_", " ").strip() # e.g. "date_of_joining" -> "date of joining"
-                
-                # 1. Direct Match
+                clean_key = lower_key.replace("_", " ").strip()
                 if key in valid_fields:
                     new_data[key] = value
-                    continue
-                
-                # 2. Label Match (Exact or approximate)
-                if lower_key in field_map:
+                elif lower_key in field_map:
                     new_data[field_map[lower_key]] = value
-                    continue
-                
-                # 3. Try matching "clean key" against labels (e.g. "First Name" -> "first_name")
-                if clean_key in field_map:
+                elif clean_key in field_map:
                     new_data[field_map[clean_key]] = value
-                    continue
-                
-                # 4. If nothing matches, keep original (will trigger validation error below)
-                new_data[key] = value
-
+                else:
+                    new_data[key] = value
             data = new_data
             
-            invalid_fields = [k for k in data.keys() if k not in valid_fields and not k.startswith("_")]
+            # Use frappe.new_doc to handle defaults and then check mandatory
+            temp_doc = frappe.new_doc(doctype)
+            for k, v in data.items():
+                if hasattr(temp_doc, k):
+                     if isinstance(v, list) and meta.get_field(k) and meta.get_field(k).fieldtype == 'Table':
+                         temp_doc.set(k, v)
+                     else:
+                         setattr(temp_doc, k, v)
             
-            if invalid_fields:
+            missing_mandatory = []
+            for f in meta.fields:
+                if f.reqd:
+                    val = getattr(temp_doc, f.fieldname, None)
+                    # For Tables, check if list is empty
+                    is_empty = False
+                    if f.fieldtype == 'Table':
+                        if not val or len(val) == 0:
+                            is_empty = True
+                    elif val is None or val == "":
+                        is_empty = True
+                        
+                    if is_empty:
+                        missing_mandatory.append({
+                            "fieldname": f.fieldname,
+                            "label": f.label,
+                            "fieldtype": f.fieldtype,
+                            "options": f.options
+                        })
+
+            if missing_mandatory and not validate_only:
                 return {
-                    "error": f"Invalid fields for {doctype}: {', '.join(invalid_fields)}. Please use 'get_doctype_info' to verify the schema before creating."
+                    "status": "Incomplete",
+                    "error": f"Missing mandatory fields for {doctype}.",
+                    "missing_fields": missing_mandatory,
+                    "message": f"To create a {doctype}, I need values for: " + 
+                               ", ".join([f"{f['label']}" for f in missing_mandatory])
                 }
 
+            invalid_fields = [k for k in data.keys() if k not in valid_fields and not k.startswith("_")]
+            if invalid_fields:
+                return {
+                    "status": "Error",
+                    "error": f"Invalid fields for {doctype}: {', '.join(invalid_fields)}.",
+                    "valid_fields_hint": list(valid_fields)[:20] # Provide some valid ones
+                }
+
+            # Map 'title' to 'description' hack
             if "title" in data and not meta.has_field("title") and meta.has_field("description"):
-                description_field = meta.get_field("description")
-                if description_field.reqd and not data.get("description"):
+                if not data.get("description"):
                     data["description"] = data.pop("title")
+
         except Exception as e:
-            # If meta fetch fails, we can't validate, but we'll catch specific errors later.
-            # However, if invalid_fields logic caused this, we should be careful.
-            # Assuming get_meta is safe if doctype exists (checked above).
-            if "Invalid fields" in str(e): raise e
-            pass 
+            frappe.log_error(f"Metadata Fetch Error: {str(e)}")
+            # Fallback to direct creation if meta fails (rare)
 
         # Permission Check
         if not frappe.has_permission(doctype, "create"):
@@ -103,14 +121,14 @@ class CreateDocument(BaseTool):
             
             # Populate fields
             for key, value in data.items():
-                if isinstance(value, list): # Likely child table
+                if isinstance(value, list) and meta.get_field(key) and meta.get_field(key).fieldtype == 'Table':
+                    doc.set(key, []) # Clear defaults if we have data
                     for row in value:
                         doc.append(key, row)
                 else:
                     if hasattr(doc, key):
                         setattr(doc, key, value)
             
-            # Set name if provided (for manual naming)
             if "name" in data and not doc.name:
                 doc.name = data["name"]
 
@@ -118,7 +136,7 @@ class CreateDocument(BaseTool):
                 doc.validate()
                 return {"status": "valid", "message": "Validation successful"}
 
-            doc.insert(ignore_permissions=True) # Permissions checked above
+            doc.insert(ignore_permissions=True) 
 
             if submit and doc.docstatus == 0 and doc.meta.is_submittable:
                 if frappe.has_permission(doctype, "submit", doc=doc.name):
@@ -131,20 +149,31 @@ class CreateDocument(BaseTool):
 
             frappe.db.commit()
             
-            return {
+            slug = doctype.lower().replace(" ", "-")
+            result = {
                 "name": doc.name,
                 "doctype": doc.doctype,
+                "url": f"/app/{slug}/{doc.name}",
                 "status": "Submitted" if doc.docstatus == 1 else "Saved",
                 "message": f"Created {doctype}: {doc.name}",
                 "action": "navigate",
-                "view": "Form"
+                "view": "Form",
+                "docname": doc.name
             }
 
+            if not hasattr(frappe.local, 'owlai_actions'):
+                frappe.local.owlai_actions = []
+            frappe.local.owlai_actions.append(result)
+
+            return result
+
         except frappe.MandatoryError as e:
-            missing_fields = ", ".join(e.args[0]) if e.args and isinstance(e.args[0], list) else str(e)
+            missing = e.args[0] if e.args and isinstance(e.args[0], list) else [str(e)]
             return {
-                "error": f"Missing mandatory fields: {missing_fields}. Please use 'get_doctype_info' to verify the correct field names (schema) for '{doctype}'."
+                "status": "Incomplete",
+                "error": f"Missing mandatory fields: {', '.join(missing)}",
+                "message": "Please provide values for these mandatory fields."
             }
         except Exception as e:
             frappe.log_error(f"Create Document Error: {str(e)}")
-            return {"error": str(e)}
+            return {"status": "Error", "error": str(e)}

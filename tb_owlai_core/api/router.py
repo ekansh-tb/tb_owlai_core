@@ -361,49 +361,84 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
     
     
     # 5. Instantiate and Run Agent (Agno)
-    from tb_owlai_core.agno_integrations.main import get_agent
-    
-    # Prepare additional context from OwlContext
-    # We serialize what we know about the current view
-    additional_context = f"""
-    Current Context:
-    - Route: {current_route or 'Unknown'}
-    - Form Data: {json.dumps(context_data.get('form_data') or {})}
-    - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
-    User: {user}
-    """
-    
-    # Agent Configuration
-    # We can pass agent_id if we have one selected in settings, or passed in request
-    # For now, default agent.
-    
     try:
-        agent = get_agent(
-            conversation_id=conversation.name,
-            # agent_id=settings.default_agent # TODO: Add this to get_agent logic if needed
-        )
+        from tb_owlai_core.agno_integrations.main import get_agent
+        agent = get_agent(conversation_id=conversation.name)
     except Exception as e:
          frappe.log_error(title="Agent Definition Error", message=traceback.format_exc())
          return {"reply": f"⚠️ Failed to initialize AI Agent: {str(e)}"}
 
+    # --- RESPONSE CACHING (Fast Path) ---
+    from tb_owlai_core.utils.cache import OwlCache
+    cache_payload = {"text": text, "route": current_route, "context": context_data}
+    cached_response = OwlCache.get(f"response:{conversation.name}", cache_payload)
+    if cached_response:
+        return cached_response
+    # ------------------------------------
+
+    # --- DYNAMIC CONTEXT ENGINEERING (Smart Context) ---
+    live_context = []
+    
+    # 1. RAG (Cached lookup)
+    try:
+        from tb_owlai_core.agno_integrations.knowledge_index import search_knowledge_base
+        # Cache RAG results for 30 mins for same query
+        rag_cache_key = f"rag:{text}"
+        kb_results = OwlCache.get("rag_search", rag_cache_key)
+        if kb_results is None:
+            kb_results = search_knowledge_base(text, limit=3)
+            OwlCache.set("rag_search", rag_cache_key, kb_results, 1800)
+            
+        if kb_results:
+            live_context.append("### Relevant Knowledge Fragments:")
+            for i, res in enumerate(kb_results, 1):
+                live_context.append(f"{i}. {res['content']}")
+    except Exception as e:
+        frappe.log_error(f"Dynamic RAG failed: {e}")
+
+    # 2. INTROSPECTION (Detect DocTypes)
+    try:
+        from tb_owlai_core.agno_integrations.context_builder import introspect_doctype
+        common_doctypes = ["Customer", "Item", "Sales Order", "Purchase Order", "Sales Invoice", "Task", "ToDo", "Lead", "Project"]
+        found_doctypes = [dt for dt in common_doctypes if dt.lower() in text.lower()]
+        
+        if found_doctypes:
+            live_context.append("### Targeted System Schemas (Auto-detected):")
+            for dt in found_doctypes:
+                # Cache schema for 1 hour
+                schema_info = OwlCache.get("schema_introspect", dt)
+                if schema_info is None:
+                    schema_info = introspect_doctype(dt)
+                    OwlCache.set("schema_introspect", dt, schema_info, 3600)
+                if schema_info:
+                    live_context.append(schema_info)
+    except Exception as e:
+         frappe.log_error(f"Dynamic Introspection failed: {e}")
+
+    # Aggregated Context
+    dynamic_system_context = "\n".join(live_context)
+    
+    # Prepare additional context
+    additional_context = f"""
+{dynamic_system_context}
+
+### User Viewport Context:
+- Route: {current_route or 'Unknown'}
+- Form Data: {json.dumps(context_data.get('form_data') or {})}
+- Selected Items: {json.dumps(context_data.get('selected_items') or [])}
+- Active User: {user}
+"""
+    
     start_time = time.time()
     status = "Success"
     error_message = None
     
     try:
-        # Run OwlAi Agent
-        # We pass the user Query (text) and context
-        
-        # Handling images if supported by Agno (TODO: Check Image artifact support in get_agent config)
-        # For now, text only.
-        
         response = agent.run(
              text,
              additional_context=additional_context
-             # images=[image_file] if image_file else None # Agno needs Image object wrapper
         )
         
-        # Response is RunOutput
         reply = response.content
         
         # Determine action_data for Frontend
@@ -428,7 +463,35 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
                     reply = ""
             except: pass
 
+        # 3. Capture Side-Channel Actions (e.g. from CreateDocument or NavigateTool)
+        if hasattr(frappe.local, "owlai_actions") and frappe.local.owlai_actions:
+            if action_data is None:
+                action_data = []
+            for action in frappe.local.owlai_actions:
+                # Format for frontend: { name: 'navigate', parameters: {...} }
+                tool_name = action.get("action", "navigate")
+                
+                # Check if this action is already in action_data (avoid duplicates)
+                is_duplicate = False
+                # Simple check
+                for existing in action_data:
+                     # Check if existing is a dict and has same parameters
+                     if isinstance(existing, dict) and existing.get("name") == tool_name and existing.get("parameters") == action:
+                         is_duplicate = True
+                         break
+                
+                if not is_duplicate:
+                    action_data.append({
+                        "name": tool_name,
+                        "parameters": action
+                    })
+            # Clear queue
+            frappe.local.owlai_actions = []
+
         result = {"reply": reply, "action_data": action_data}
+        
+        # Cache the successful result for 10 minutes to avoid redundant clicks/refreshes
+        OwlCache.set(f"response:{conversation.name}", cache_payload, result, 600)
         
     except Exception as e:
         status = "Error"
@@ -591,6 +654,60 @@ def update_conversation_title(conversation_id, title):
         return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()
+def clear_owlai_cache():
+    """Manually clear the OwlAI cache."""
+    from tb_owlai_core.utils.cache import OwlCache
+    OwlCache.clear()
+    return {"status": "success", "message": "Cache cleared."}
+
+@frappe.whitelist()
+def warm_up_owlai_cache():
+    """Pre-cache schemas for common DocTypes."""
+    from tb_owlai_core.agno_integrations.context_builder import introspect_doctype
+    from tb_owlai_core.utils.cache import OwlCache
+    
+    common = ["Customer", "Item", "Sales Order", "Purchase Order", "Sales Invoice", "Task", "ToDo"]
+    for dt in common:
+        schema = introspect_doctype(dt)
+        OwlCache.set("schema_introspect", dt, schema, 86400) # Cache for 24h
+        
+    return {"status": "success", "message": f"Cached schemas for {len(common)} DocTypes."}
+
+def _repair_links(text):
+    """
+    Ensures that Links generated by the LLM match Frappe's case-sensitive naming.
+    Often LLMs lower-case the ID (e.g. /app/customer/suraj instead of /app/customer/Suraj).
+    """
+    import re
+    if not text: return text
+    
+    # Simple regex to find /app/slug/ID
+    links = re.findall(r'(/app/([a-z0-9\-]+)/([a-zA-Z0-9\-\%_\.]+))', text)
+    
+    for full_match, slug, original_id in links:
+        # Try to find the correct casing in the DB if it's a known DocType
+        # 1. Resolve slug to Doctype
+        doctype = slug.replace("-", " ").title()
+        if not frappe.db.exists("DocType", doctype):
+            # Try fuzzy match if needed, but let's keep it simple
+            continue
+            
+        # 2. Check if ID exists with exact casing
+        if frappe.db.exists(doctype, original_id):
+            continue # Already correct
+            
+        # 3. Try to find the actual name (case-insensitive search)
+        # We use '%' just in case there are spaces/dashes mismatches
+        actual_name = frappe.db.get_value(doctype, {"name": ["like", original_id]}, "name")
+        if actual_name and actual_name != original_id:
+            # Repair the link in the text
+            old_link = full_match
+            new_link = f"/app/{slug}/{actual_name}"
+            text = text.replace(old_link, new_link)
+            
+    return text
+
+@frappe.whitelist()
 def get_conversation_messages(conversation_id):
     if not conversation_id: return []
     try:
@@ -606,7 +723,7 @@ def get_conversation_messages(conversation_id):
 
             messages.append({
                 "role": m.role,
-                "content": m.content,
+                "content": _repair_links(m.content), # Auto-repair links on load
                 "message_type": m.message_type,
                 "creation": m.creation,
                 "idx": m.idx,

@@ -10,7 +10,8 @@
         "description",
         "expected_output",
         "agent",
-        "async_execution"
+        "async_execution",
+        "context"
     ],
     "fields": [
         {
@@ -36,6 +37,13 @@
             "fieldname": "async_execution",
             "fieldtype": "Check",
             "label": "Async Execution"
+        },
+        {
+            "fieldname": "context",
+            "fieldtype": "Table MultiSelect",
+            "label": "Context (Dependencies)",
+            "options": "OwlAI Task Context",
+            "description": "Tasks that this task depends on (outputs will be used as context)."
         }
     ],
     "index_web_pages_for_search": 1,

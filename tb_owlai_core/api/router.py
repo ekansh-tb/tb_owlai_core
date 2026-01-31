@@ -186,23 +186,28 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
         
         _update_conversation_title(conversation, text, None, None)
 
+        # Prepare Context
         context_data = {}
         if context:
             try:
                  context_data = json.loads(context)
             except: pass
+        
         current_route = route or context_data.get('route')
         
+        # Instantiate OwlContext for rich data extraction
+        agent_context = OwlContext(
+            route=current_route,
+            doctype=context_data.get('doctype'),
+            docname=context_data.get('docname'),
+            form_data=context_data.get('form_data'),
+            selected_items=context_data.get('selected_items')
+        )
+        
+        additional_context = agent_context.get_full_context_string()
+        additional_context += f"\nUser: {user}"
+        
         from tb_owlai_core.agno_integrations.main import get_agent
-        
-        additional_context = f"""
-        Current Context:
-        - Route: {current_route or 'Unknown'}
-        - Form Data: {json.dumps(context_data.get('form_data') or {})}
-        - Selected Items: {json.dumps(context_data.get('selected_items') or [])}
-        User: {user}
-        """
-        
         agent = get_agent(conversation_id=conversation.name)
         
         def generate():
@@ -423,9 +428,7 @@ def handle_input_v2(route=None, text=None, conversation_id=None, context=None, m
 {dynamic_system_context}
 
 ### User Viewport Context:
-- Route: {current_route or 'Unknown'}
-- Form Data: {json.dumps(context_data.get('form_data') or {})}
-- Selected Items: {json.dumps(context_data.get('selected_items') or [])}
+{agent_context.get_full_context_string()}
 - Active User: {user}
 """
     

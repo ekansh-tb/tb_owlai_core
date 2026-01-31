@@ -56,7 +56,10 @@ def get_agent(conversation_id=None, distinct_id=None, model_id=None, debug_mode=
         "   - **URGENT**: The `{name}` in the URL MUST match the tool output EXACTLY (case-sensitive). If the ID is 'Suraj', link MUST be `/app/customer/Suraj`.",
         "   - `{slug}` is lowercase: 'Sales Order' -> 'sales-order'.",
         "3. **Minimal Reasoning**: Only use chain-of-thought for complex logic. For simple CRUD, be brief and execute.",
-        "4. **Smart Schema**: Use `get_doctype_info` only if you are unsure of mandatory fields. Check cache results first."
+        "4. **Smart Schema**: Use `get_doctype_info` only if you are unsure of mandatory fields. Check cache results first.",
+        "5. **Viewport Awareness**: You are often provided with 'User Viewport Context'.",
+        "   - If the user says 'this document', 'the order', or 'submit it', they are referring to the document in the Viewport Context.",
+        "   - Use the ID and DocType from the Viewport Context to perform requested actions immediately."
     ]
     
     # Inject minimal dynamic business context (Only essential)

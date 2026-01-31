@@ -2,13 +2,15 @@ import frappe
 import json
 
 class OwlContext:
-    def __init__(self, route=None, form_data=None, selected_items=None):
+    def __init__(self, route=None, doctype=None, docname=None, form_data=None, selected_items=None):
         self.route = route
         self.form_data = form_data or {}
         self.selected_items = selected_items or []
-        self.doctype = None
-        self.docname = None
-        self._parse_route(route)
+        self.doctype = doctype
+        self.docname = docname
+        
+        if not self.doctype or not self.docname:
+            self._parse_route(route)
 
     def get(self, key, default=None):
         return getattr(self, key, default)
@@ -73,23 +75,24 @@ class OwlContext:
             
         try:
             meta = frappe.get_meta(self.doctype)
-            fields = []
             # Basic Info
             schema_text = f"DocType: {self.doctype}\n"
             schema_text += f"Description: {meta.description or 'No description'}\n"
+            schema_text += f"Is Submittable: {'Yes' if meta.is_submittable else 'No'}\n"
             
             # Fields
-            schema_text += "Fields:\n"
+            schema_text += "Fields (First 50):\n"
+            fields = []
             for df in meta.fields:
-                 if df.fieldtype not in ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold"]:
+                 if df.fieldtype not in ["Section Break", "Column Break", "Tab Break", "HTML", "Image", "Fold"] and not df.hidden:
                      field_info = f"- {df.fieldname} ({df.fieldtype}): {df.label}"
-                     if df.options:
+                     if df.options and df.fieldtype in ["Link", "Select"]:
                           field_info += f" [Options: {df.options}]"
                      if df.reqd:
                           field_info += " [Required]"
                      fields.append(field_info)
             
-            schema_text += "\n".join(fields)
+            schema_text += "\n".join(fields[:50])
             
             return f"""
 \n---
@@ -100,7 +103,7 @@ SCHEMA INFORMATION:
 """
         except Exception as e:
             # Don't fail the whole request if schema fetch fails
-            print(f"Schema fetch error: {e}")
+            frappe.log_error(f"Schema fetch error for {self.doctype}: {e}")
             return ""
 
     def get_data_context_string(self):

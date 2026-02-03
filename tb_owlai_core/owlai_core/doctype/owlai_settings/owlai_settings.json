@@ -82,7 +82,6 @@
             "label": "Cache TTL (Seconds)"
         },
         {
-            "default": "llama3.2-vision",
             "fieldname": "vision_model",
             "fieldtype": "Link",
             "label": "Vision Model (Local)",

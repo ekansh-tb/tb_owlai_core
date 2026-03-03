@@ -27,24 +27,23 @@ class CorePlugin(BasePlugin):
             "get_document",
             "update_document",
             "delete_document",
-            
-            # List & Search (Enhanced with filters)
+
+            # List & Search
             "list_documents",
             "search_documents",
-            
+
             # Metadata
             "get_doctype_info",
-            
+
             # Reporting
             "generate_report",
-            
+
             # Workflow
             "run_workflow",
-            
-            # Primitives
+
+            # Primitives (sandbox removed — too dangerous for production)
             "run_doc_method",
-            "sandbox",
-            
+
             # Navigation
             "maps",
             "navigate",
@@ -52,7 +51,7 @@ class CorePlugin(BasePlugin):
             # Utilities
             "frappe_utils",
             "context_tools",
-            "frappe_crud"
+            "frappe_crud",
         ]
 
     def validate_environment(self):

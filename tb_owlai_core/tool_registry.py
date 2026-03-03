@@ -116,9 +116,15 @@ class ToolRegistry:
                      return res
                  return f"Error: Underlying Plugin for '{tool_name}' not found."
             
-            # Real Dotted Path Execution
+            # Real Dotted Path Execution — restricted to safe paths
+            ALLOWED_PATH_PREFIXES = ("tb_owlai_core.plugins.",)
+            if not any(tool_doc.method_path.startswith(p) for p in ALLOWED_PATH_PREFIXES):
+                frappe.log_error(
+                    f"Blocked unsafe method_path: {tool_doc.method_path}",
+                    title="OwlAI Security"
+                )
+                return f"Error: Method path '{tool_doc.method_path}' is not in the allowed list."
             try:
-                # Security: You might want to restrict this to whitelisted methods or specific allowed paths
                 res = frappe.call(tool_doc.method_path, **arguments)
                 if use_cache: OwlCache.set(cache_namespace, arguments, res)
                 return res
@@ -134,26 +140,3 @@ class ToolRegistry:
         """
         return self.execute_tool(tool_name, arguments)
 
-    def get_crewai_tool(self, tool_name):
-        """
-        Returns a crewai.tools.Tool compatible object for a given tool name.
-        """
-        from crewai.tools import Tool
-        
-        # 1. Get Tool Doc or Plugin
-        tool_doc = self.get_tool_doc(tool_name)
-        plugin_tool = self.plugin_manager.get_tool(tool_name)
-        
-        description = f"Execute tool {tool_name}"
-        if plugin_tool and hasattr(plugin_tool, "description"):
-            description = plugin_tool.description
-        
-        # Define the function
-        def func(**kwargs):
-            return self.execute_tool(tool_name, kwargs)
-        
-        return Tool(
-            name=tool_name,
-            func=func,
-            description=description
-        )

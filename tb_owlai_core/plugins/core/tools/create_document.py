@@ -136,7 +136,7 @@ class CreateDocument(BaseTool):
                 doc.validate()
                 return {"status": "valid", "message": "Validation successful"}
 
-            doc.insert(ignore_permissions=True) 
+            doc.insert()  # Respects frappe.session.user permissions
 
             if submit and doc.docstatus == 0 and doc.meta.is_submittable:
                 if frappe.has_permission(doctype, "submit", doc=doc.name):

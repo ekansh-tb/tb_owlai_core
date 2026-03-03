@@ -45,21 +45,20 @@ class RunDocMethod(BaseTool):
                     return {"error": "No Cancel Permission"}
                 doc.cancel()
             else:
-                 # Generic method call
-                 if hasattr(doc, method):
-                     func = getattr(doc, method)
-                     # Check if callable
-                     if callable(func):
-                         # We might want to restrict which methods can be called for security
-                         # For now, we trust the agent + write permission + framework whitelisting (if applicable)
-                         # but here we are calling Python directly, so we are bypassing whitelist check.
-                         # This is powerful.
-                         result = func(**args)
-                         return {"status": "success", "result": result, "docstatus": doc.docstatus}
-                     else:
-                         return {"error": f"'{method}' is not a callable method on {doctype}"}
-                 else:
+                 # Generic method call — only allow @frappe.whitelist() methods for security
+                 if not hasattr(doc, method):
                      return {"error": f"Method '{method}' not found on {doctype}"}
+                 func = getattr(doc, method)
+                 if not callable(func):
+                     return {"error": f"'{method}' is not a callable method on {doctype}"}
+                 # Security: only allow methods whitelisted via @frappe.whitelist()
+                 is_whitelisted = getattr(func, "is_whitelisted", False) or (
+                     hasattr(func, "__func__") and getattr(func.__func__, "is_whitelisted", False)
+                 )
+                 if not is_whitelisted:
+                     return {"error": f"Method '{method}' is not a whitelisted method on {doctype}. Only submit, cancel, and @frappe.whitelist() methods are allowed."}
+                 result = func(**args)
+                 return {"status": "success", "result": result, "docstatus": doc.docstatus}
             
             return {
                 "status": "success", 

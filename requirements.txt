@@ -1,9 +1,8 @@
-litellm
-frappe
-agno
-tantivy
+# Core dependencies (zero third-party AI frameworks)
+pydantic
 beautifulsoup4
-pypdf
-crewai
-chromadb
-lancedb
+
+# Optional — uncomment for RAG/knowledge features
+# lancedb
+# pypdf
+# agno[ollama]

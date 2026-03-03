@@ -39,7 +39,7 @@ class UpdateDocument(BaseTool):
                 if hasattr(doc, key):
                      setattr(doc, key, value)
             
-            doc.save(ignore_permissions=True) # Checked above
+            doc.save()  # Respects frappe.session.user permissions
             frappe.db.commit()
 
             slug = doctype.lower().replace(" ", "-")

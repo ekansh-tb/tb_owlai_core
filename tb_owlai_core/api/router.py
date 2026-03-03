@@ -1,92 +1,26 @@
+"""
+OwlAI API Router — All @frappe.whitelist() endpoints.
+Uses the native OwlEngine (no agno/litellm/crewai dependencies).
+"""
 
 import frappe
 from werkzeug.wrappers import Response
 import json
-import base64
 import time
 import traceback
-from litellm import completion
-from tb_owlai_core.utils import get_active_provider_config
-from tb_owlai_core.tool_registry import ToolRegistry
-from tb_owlai_core.owlai_core.agent import OwlAgent
+
 from tb_owlai_core.utils.context import OwlContext
-from tb_owlai_core.owlai_core.transcriber import transcribe_to_text
-
-# Conversation memory settings are now in OwlAI Settings
-
-def get_or_create_conversation(conversation_id=None):
-    """Get existing conversation or create a new one for current user"""
-    user = frappe.session.user
-    
-    if conversation_id:
-        # Load existing conversation
-        try:
-            conv = frappe.get_doc("OwlAI Conversation", conversation_id)
-            # Check permission
-            if not conv.has_permission("read"):
-                frappe.throw("You don't have permission to access this conversation")
-            return conv
-        except frappe.DoesNotExistError:
-            pass  # Will create new
-    
-    # Create new conversation
-    conv = frappe.get_doc({
-        "doctype": "OwlAI Conversation",
-        "owner": user,
-        "sharing_type": "Private",
-        "status": "Active"
-    })
-    conv.insert(ignore_permissions=True)
-    
-    # Crucial: Set session_id to the document name to prevent duplication in storage backend
-    conv.session_id = conv.name
-    conv.save(ignore_permissions=True)
-    
-    frappe.db.commit()
-    return conv
+from tb_owlai_core.engine.core import OwlEngine
+from tb_owlai_core.engine import conversation as conv_store
 
 
-def get_conversation_history(conversation, limit=None):
-    """Load last N messages from a conversation for LLM context"""
-    if not conversation.messages:
-        return []
-    
-    if limit is None:
-        settings = frappe.get_single("OwlAI Settings")
-        limit = settings.context_message_limit or 20
+# ---------------------------------------------------------------------------
+# Analytics logging
+# ---------------------------------------------------------------------------
 
-    # Get last N messages
-    recent_messages = conversation.messages[-limit:] if len(conversation.messages) > limit else conversation.messages
-    
-    history = []
-    for msg in recent_messages:
-        if msg.role in ["user", "assistant"]:
-            history.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-    return history
-
-
-def save_message(conversation, role, content, message_type="text", action_data=None):
-    """Save a message to the conversation"""
-    conversation.append("messages", {
-        "role": role,
-        "content": content[:100000] if content else "",  # Limit content size
-        "message_type": message_type,
-        "action_data": json.dumps(action_data) if action_data else None
-    })
-    conversation.message_count = len(conversation.messages)
-    conversation.save(ignore_permissions=True)
-    frappe.db.commit()
-
-
-
-
-
-
-def log_analytics(user, config, model, response_time, prompt_tokens, completion_tokens, total_tokens, status, tool_calls, full_prompt, full_response, error_message=None):
-    """Log execution metrics to OwlAI Analytics if enabled"""
+def _log_analytics(user, model_id, response_time, usage, status, tool_calls,
+                   full_prompt, full_response, error_message=None):
+    """Log execution metrics to OwlAI Analytics if enabled."""
     try:
         settings = frappe.get_single("OwlAI Settings")
         if not settings.enable_analytics:
@@ -97,516 +31,323 @@ def log_analytics(user, config, model, response_time, prompt_tokens, completion_
             "user": user,
             "timestamp": frappe.utils.now(),
             "status": status,
-            "provider": _resolve_provider_link(config.get("provider")),
-            "model": _resolve_model_link(model),
+            "model": _resolve_model_link(model_id),
             "response_time": response_time,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
             "tool_calls": json.dumps(tool_calls, indent=2) if tool_calls else None,
-            "full_prompt": json.dumps(full_prompt, indent=2) if full_prompt else str(full_prompt),
-            "full_response": full_response,
-            "error_message": error_message
+            "full_prompt": full_prompt[:10000] if full_prompt else "",
+            "full_response": full_response[:10000] if full_response else "",
+            "error_message": error_message,
         })
         doc.insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception as e:
-        print(f"Failed to log analytics: {e}")
-        # traceback.print_exc() 
-        # Don't throw error to UI for analytics failure
+        frappe.logger("owlai").error(f"Analytics logging failed: {e}")
 
-def _resolve_provider_link(provider_identifier):
-    """
-    Ensures the provider field contains a valid OwlAI Provider name.
-    """
-    if not provider_identifier: return None
-    
-    # 1. Direct match
-    if frappe.db.exists("OwlAI Provider", provider_identifier):
-        return provider_identifier
-        
-    # 2. Case-insensitive match (e.g. 'ollama' -> 'Ollama')
-    provider_name = frappe.db.get_value("OwlAI Provider", 
-                                      {"name": ["matches", provider_identifier]}, 
-                                      "name")
-    if provider_name:
-        return provider_name
-
-    # 3. Try partial map or common alises (optional)
-    if provider_identifier.lower() == "google": return "Google Gemini"
-    
-    return None
 
 def _resolve_model_link(model_identifier):
-    """
-    Ensures the model field contains a valid OwlAI Model name (Link).
-    Input could be:
-    1. Valid Link Name definition 'qwen2.5:1.5b-Ollama'
-    2. LiteLLM identifier 'ollama/qwen2.5:1.5b'
-    3. Just model name 'qwen2.5:1.5b'
-    """
-    if not model_identifier: return None
-    
-    # 1. Check if valid Link
+    """Resolve a model name to a valid OwlAI Model link, or None."""
+    if not model_identifier:
+        return None
     if frappe.db.exists("OwlAI Model", model_identifier):
         return model_identifier
-        
-    # 2. Try to reverse lookup by model_name
-    # Handle 'provider/model' format
-    search_name = model_identifier
-    if "/" in model_identifier:
-        search_name = model_identifier.split("/", 1)[1]
-    
-    # Simple search
-    found = frappe.db.get_value("OwlAI Model", {"model_name": search_name}, "name")
-    if found: return found
-    
-    # 3. Try fuzzy search if strict match fails (optional, maybe overkill?)
-    
-    # If not found, return None to avoid LinkValidationError since field is not mandatory
-    return None
+    search_name = model_identifier.split("/", 1)[-1] if "/" in model_identifier else model_identifier
+    return frappe.db.get_value("OwlAI Model", {"model_name": search_name}, "name")
 
+
+# ---------------------------------------------------------------------------
+# Chat Endpoints
+# ---------------------------------------------------------------------------
+
+def _parse_context(route, context_str):
+    """Parse context from frontend into OwlContext."""
+    context_data = {}
+    if context_str:
+        try:
+            context_data = json.loads(context_str)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    current_route = route or context_data.get("route")
+
+    return OwlContext(
+        route=current_route,
+        doctype=context_data.get("doctype"),
+        docname=context_data.get("docname"),
+        form_data=context_data.get("form_data"),
+        selected_items=context_data.get("selected_items"),
+    )
 
 
 @frappe.whitelist()
 def handle_stream_input(route=None, text=None, conversation_id=None, context=None, mode=None):
-    """
-    Streaming chat handler (SSE).
-    """
+    """Streaming chat handler (SSE). Primary endpoint for the frontend."""
     user = frappe.session.user
-    
-    # Debug log for 500 error diagnosis
-    # frappe.log_error("OWL DEBUG: handle_stream_input called")
-    
-    try:
-        conversation = get_or_create_conversation(conversation_id)
-        if route and not conversation.context_route:
-            conversation.context_route = route
-            conversation.save(ignore_permissions=True)
-        
-        _update_conversation_title(conversation, text, None, None)
 
-        # Prepare Context
-        context_data = {}
-        if context:
-            try:
-                 context_data = json.loads(context)
-            except: pass
-        
-        current_route = route or context_data.get('route')
-        
-        # Instantiate OwlContext for rich data extraction
-        agent_context = OwlContext(
-            route=current_route,
-            doctype=context_data.get('doctype'),
-            docname=context_data.get('docname'),
-            form_data=context_data.get('form_data'),
-            selected_items=context_data.get('selected_items')
+    try:
+        agent_context = _parse_context(route, context)
+
+        engine = OwlEngine(
+            user=user,
+            conversation_id=conversation_id,
         )
-        
-        additional_context = agent_context.get_full_context_string()
-        additional_context += f"\nUser: {user}"
-        
-        from tb_owlai_core.agno_integrations.main import get_agent
-        agent = get_agent(conversation_id=conversation.name)
-        
+
+        # Update route on conversation if not set
+        if route and not engine.conversation.context_route:
+            engine.conversation.context_route = route
+            engine.conversation.save(ignore_permissions=True)
+
         def generate():
             full_response_text = ""
             start_time = time.time()
             status = "Success"
             error_message = None
-            tool_calls = [] 
-            
+
             try:
-                # Yield Start Event
-                yield f"event: start\ndata: {json.dumps({'conversation_id': conversation.name})}\n\n"
+                for event in engine.run_stream(text, context=agent_context):
+                    yield event
 
-                stream = agent.run(text, additional_context=additional_context, stream=True)
-                
-                if stream:
-                    for chunk in stream:
-                        # 1. Capture content tokens
-                        token = ""
-                        if hasattr(chunk, "content") and chunk.content:
-                             token = chunk.content
-                        elif isinstance(chunk, str):
-                             token = chunk
-                        
-                        # 2. Capture Tool Calls if present in this chunk (Standard Agno)
-                        current_tool_calls = []
-                        if hasattr(chunk, "tools") and chunk.tools:
-                            for t in chunk.tools:
-                                tool_call = {"name": t.tool_name, "parameters": t.tool_args}
-                                tool_calls.append(tool_call) # For analytics
-                                current_tool_calls.append(tool_call)
+                    # Track full response for analytics
+                    if "token" in event and "data:" in event:
+                        try:
+                            payload = json.loads(event.split("data: ", 1)[1].strip())
+                            if "token" in payload:
+                                full_response_text += payload["token"]
+                        except (json.JSONDecodeError, IndexError):
+                            pass
 
-                        # 3. Capture Side-Channel Actions (e.g. from NavigateTool executed internally)
-                        if hasattr(frappe.local, "owlai_actions") and frappe.local.owlai_actions:
-                             for action in frappe.local.owlai_actions:
-                                  # Format for frontend: { name: 'navigate', parameters: {...} }
-                                  tool_call = {
-                                      "name": action.get("action", "navigate"),
-                                      "parameters": action
-                                  }
-                                  current_tool_calls.append(tool_call)
-                                  tool_calls.append(tool_call)
-                             # Clear queue to ensure we only send once
-                             frappe.local.owlai_actions = []
-
-                        # Yield data
-                        payload = {}
-                        if token: payload["token"] = token
-                        if current_tool_calls: payload["action_data"] = current_tool_calls
-                        
-                        if payload:
-                            yield f"data: {json.dumps(payload)}\n\n"
-                            if token: full_response_text += token
-                
             except Exception as e:
                 status = "Error"
                 error_message = str(e)
-                # Yield error as a normal token so it appears in the chat UI
-                friendly_error = f"\n\n**I encountered an error:** {str(e)}\nPlease check the logs or try again."
-                yield f"data: {json.dumps({'token': friendly_error})}\n\n"
-                
-                # Also yield the actual error event for checking
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
-                frappe.log_error(title="Stream Error", message=traceback.format_exc())
-                
+                frappe.log_error(title="OwlAI Stream Error", message=traceback.format_exc())
+
             finally:
                 duration = time.time() - start_time
                 try:
-                    log_analytics(
+                    model_id = engine.client.model if hasattr(engine.client, "model") else "unknown"
+                    _log_analytics(
                         user=user,
-                        config={},
-                        model=agent.model.id if agent and agent.model else "Unknown",
+                        model_id=model_id,
                         response_time=duration,
-                        prompt_tokens=0, 
-                        completion_tokens=len(full_response_text)/4,
-                        total_tokens=0,
+                        usage={},
                         status=status,
-                        tool_calls=tool_calls,
+                        tool_calls=[],
                         full_prompt=text,
                         full_response=full_response_text,
-                        error_message=error_message
+                        error_message=error_message,
                     )
-                except: pass
-                
-                yield "event: end\ndata: [DONE]\n\n"
+                except Exception:
+                    pass
 
-        return Response(generate(), mimetype='text/event-stream')
-        
+        return Response(generate(), mimetype="text/event-stream")
+
     except Exception as top_e:
-        import traceback
-        error_msg = f"Fatal 500 Error in handle_stream_input: {str(top_e)}\n{traceback.format_exc()}"
-        frappe.log_error(title="OwlAI Stream Error", message=error_msg)
-        # Return a Response with error if possible, or re-raise to see it in logs
-        return Response(f"event: error\ndata: {json.dumps({'error': str(top_e)})}\n\n", 
-                        status=200, mimetype='text/event-stream')
+        frappe.log_error(
+            title="OwlAI Stream Fatal Error",
+            message=traceback.format_exc(),
+        )
+        return Response(
+            f"event: error\ndata: {json.dumps({'error': str(top_e)})}\n\n",
+            status=200,
+            mimetype="text/event-stream",
+        )
 
 
 @frappe.whitelist()
 def handle_input_v2(route=None, text=None, conversation_id=None, context=None, mode=None):
-    """
-    Main chat handler using the new Agent Architecture.
-    Accepts:
-    - route: Current route string (legacy, also in context)
-    - text: User query
-    - conversation_id: ID to continue
-    - context: JSON string containing frontend context (form_data, selection, etc.)
-    - mode: 'single' (Action) or 'agentic' (Multi-step)
-    """
+    """Non-streaming chat handler. Returns JSON dict."""
     user = frappe.session.user
-    
-    # 2. Get or create conversation
-    conversation = get_or_create_conversation(conversation_id)
-    if route and not conversation.context_route:
-        conversation.context_route = route
-        conversation.save(ignore_permissions=True)
-    
-    # 3. Handle Files
-    files = frappe.request.files
-    image_file = files.get('image')
-    audio_file = files.get('audio')
-    
-    # Process Audio immediately if present
-    if audio_file:
-        transcribed_text = transcribe_to_text(audio_file)
-        if transcribed_text.startswith("Error"):
-             return {"reply": f"⚠️ Audio Transcription Failed: {transcribed_text}"}
-        
-        # Determine if we append or replace
-        if text:
-            text += f"\n(Transcribed Info: {transcribed_text})"
-        else:
-            text = transcribed_text
-    
-    # Update Title if needed
-    _update_conversation_title(conversation, text, image_file, audio_file)
 
-    # 4. Prepare Context
-    context_data = {}
-    if context:
-        try:
-             context_data = json.loads(context)
-        except: pass
-    
-    # If route is passed separately, prefer it or fallback to context
-    current_route = route or context_data.get('route')
-    
-    # Instantiate OwlContext
-    # This class robustly handles route parsing and data extraction
-    agent_context = OwlContext(
-        route=current_route,
-        form_data=context_data.get('form_data'),
-        selected_items=context_data.get('selected_items')
-    )
-    
+    agent_context = _parse_context(route, context)
 
-    
-    
-    # 5. Instantiate and Run Agent (Agno)
     try:
-        from tb_owlai_core.agno_integrations.main import get_agent
-        agent = get_agent(conversation_id=conversation.name)
+        engine = OwlEngine(
+            user=user,
+            conversation_id=conversation_id,
+        )
     except Exception as e:
-         frappe.log_error(title="Agent Definition Error", message=traceback.format_exc())
-         return {"reply": f"⚠️ Failed to initialize AI Agent: {str(e)}"}
+        frappe.log_error(title="Agent Init Error", message=traceback.format_exc())
+        return {"reply": f"Failed to initialize AI Agent: {str(e)}"}
 
-    # --- RESPONSE CACHING (Fast Path) ---
-    from tb_owlai_core.utils.cache import OwlCache
-    cache_payload = {"text": text, "route": current_route, "context": context_data}
-    cached_response = OwlCache.get(f"response:{conversation.name}", cache_payload)
-    if cached_response:
-        return cached_response
-    # ------------------------------------
+    # Update route on conversation
+    if route and not engine.conversation.context_route:
+        engine.conversation.context_route = route
+        engine.conversation.save(ignore_permissions=True)
 
-    # --- DYNAMIC CONTEXT ENGINEERING (Smart Context) ---
-    live_context = []
-    
-    # 1. RAG (Cached lookup)
-    try:
-        from tb_owlai_core.agno_integrations.knowledge_index import search_knowledge_base
-        # Cache RAG results for 30 mins for same query
-        rag_cache_key = f"rag:{text}"
-        kb_results = OwlCache.get("rag_search", rag_cache_key)
-        if kb_results is None:
-            kb_results = search_knowledge_base(text, limit=3)
-            OwlCache.set("rag_search", rag_cache_key, kb_results, 1800)
-            
-        if kb_results:
-            live_context.append("### Relevant Knowledge Fragments:")
-            for i, res in enumerate(kb_results, 1):
-                live_context.append(f"{i}. {res['content']}")
-    except Exception as e:
-        frappe.log_error(f"Dynamic RAG failed: {e}")
-
-    # 2. INTROSPECTION (Detect DocTypes)
-    try:
-        from tb_owlai_core.agno_integrations.context_builder import introspect_doctype
-        common_doctypes = ["Customer", "Item", "Sales Order", "Purchase Order", "Sales Invoice", "Task", "ToDo", "Lead", "Project"]
-        found_doctypes = [dt for dt in common_doctypes if dt.lower() in text.lower()]
-        
-        if found_doctypes:
-            live_context.append("### Targeted System Schemas (Auto-detected):")
-            for dt in found_doctypes:
-                # Cache schema for 1 hour
-                schema_info = OwlCache.get("schema_introspect", dt)
-                if schema_info is None:
-                    schema_info = introspect_doctype(dt)
-                    OwlCache.set("schema_introspect", dt, schema_info, 3600)
-                if schema_info:
-                    live_context.append(schema_info)
-    except Exception as e:
-         frappe.log_error(f"Dynamic Introspection failed: {e}")
-
-    # Aggregated Context
-    dynamic_system_context = "\n".join(live_context)
-    
-    # Prepare additional context
-    additional_context = f"""
-{dynamic_system_context}
-
-### User Viewport Context:
-{agent_context.get_full_context_string()}
-- Active User: {user}
-"""
-    
     start_time = time.time()
     status = "Success"
     error_message = None
-    
+    result = {}
+
     try:
-        response = agent.run(
-             text,
-             additional_context=additional_context
-        )
-        
-        reply = response.content
-        
-        # Determine action_data for Frontend
-        action_data = None
-        
-        # 1. Native Tool Calls
-        if response.tools:
-            action_data = []
-            for t in response.tools:
-                action_data.append({
-                    "name": t.tool_name,
-                    "parameters": t.tool_args
-                })
-        
-        # 2. Fallback: Parse JSON from reply
-        if not action_data and reply and reply.strip().startswith("{"):
-            try:
-                possible = json.loads(reply)
-                if "name" in possible and "parameters" in possible:
-                    action_data = possible
-                    # Clear reply so we don't show raw JSON to user
-                    reply = ""
-            except: pass
+        result = engine.run(text, context=agent_context)
+        result["reply"] = _repair_links(result.get("reply", ""))
+        return result
 
-        # 3. Capture Side-Channel Actions (e.g. from CreateDocument or NavigateTool)
-        if hasattr(frappe.local, "owlai_actions") and frappe.local.owlai_actions:
-            if action_data is None:
-                action_data = []
-            for action in frappe.local.owlai_actions:
-                # Format for frontend: { name: 'navigate', parameters: {...} }
-                tool_name = action.get("action", "navigate")
-                
-                # Check if this action is already in action_data (avoid duplicates)
-                is_duplicate = False
-                # Simple check
-                for existing in action_data:
-                     # Check if existing is a dict and has same parameters
-                     if isinstance(existing, dict) and existing.get("name") == tool_name and existing.get("parameters") == action:
-                         is_duplicate = True
-                         break
-                
-                if not is_duplicate:
-                    action_data.append({
-                        "name": tool_name,
-                        "parameters": action
-                    })
-            # Clear queue
-            frappe.local.owlai_actions = []
-
-        result = {"reply": reply, "action_data": action_data}
-        
-        # Cache the successful result for 10 minutes to avoid redundant clicks/refreshes
-        OwlCache.set(f"response:{conversation.name}", cache_payload, result, 600)
-        
     except Exception as e:
         status = "Error"
-        error_message = str(traceback.format_exc())
-        frappe.log_error("OwlAI OwlAi Agent Error")
+        error_message = traceback.format_exc()
+        frappe.log_error(title="OwlAI Agent Error", message=error_message)
         result = {"reply": f"An error occurred: {str(e)}"}
-        response = None
-        
+        return result
+
     finally:
-        end_time = time.time()
-        duration = end_time - start_time
-        
-        # Log Analytics
+        duration = time.time() - start_time
         try:
-            metrics = response.metrics if response and response.metrics else None
-            
-            tool_calls = []
-            # Extract tool calls from response tools list
-            if response and response.tools:
-                 for t in response.tools:
-                     tool_calls.append({
-                         "name": t.tool_name,
-                         "args": t.tool_args,
-                         "result": str(t.result)[:1000] # Truncate result
-                     })
-            
-            log_analytics(
+            model_id = engine.client.model if hasattr(engine.client, "model") else "unknown"
+            _log_analytics(
                 user=user,
-                config={}, # Agno config not easily accessible as dict, pass empty or reconstruct
-                model=agent.model.id if agent and agent.model else "Unknown",
+                model_id=model_id,
                 response_time=duration,
-                prompt_tokens=metrics.input_tokens if metrics else 0,
-                completion_tokens=metrics.output_tokens if metrics else 0,
-                total_tokens=metrics.total_tokens if metrics else 0,
+                usage=result.get("usage", {}),
                 status=status,
-                tool_calls=tool_calls,
+                tool_calls=[],
                 full_prompt=text,
                 full_response=result.get("reply", ""),
-                error_message=error_message
+                error_message=error_message,
             )
-        except Exception as log_e:
-             # print(f"Analytics Error: {log_e}")
-             pass
+        except Exception:
+            pass
 
-    # result contains {"reply": "..."}
-    # Add conversation_id for frontend tracking
-    result["conversation_id"] = conversation.name
-    
-    return result
 
-def _update_conversation_title(conversation, text, image_file, audio_file):
-    """Helper to name the conversation, including context where possible"""
-    title_text = text or ""
-    if not title_text.strip():
-        if image_file: title_text = "Image Analysis"
-        elif audio_file: title_text = "Voice Command"
-    
-    # Valid title update conditions
-    should_update = False
-    if not conversation.title:
-        should_update = True
-    elif conversation.title == conversation.name:
-        should_update = True
-    elif conversation.title.startswith("Conversation "):
-        should_update = True
-    elif "OWL-CONV-" in conversation.title:
-        should_update = True
-    elif conversation.title == "New Conversation":
-        should_update = True
+# ---------------------------------------------------------------------------
+# Conversation Management
+# ---------------------------------------------------------------------------
 
-    if title_text and should_update:
-        # Clean title text
-        title = title_text.strip().split('\n')[0]
-        title = title[:60] + "..." if len(title) > 60 else title
-        
-        # Add contextual suffix if it's a generic command
-        if conversation.context_route and " " not in title:
-             title = f"{title} ({conversation.context_route.split('/')[-1]})"
+@frappe.whitelist()
+def get_conversations(limit=20, search_text=None):
+    """List conversations visible to the current user."""
+    user = frappe.session.user
+    filters = {"status": "Active"}
 
-        conversation.title = title
-        conversation.save(ignore_permissions=True)
-        frappe.db.commit()
+    if search_text:
+        filters["title"] = ["like", f"%{search_text}%"]
+
+    return frappe.get_all(
+        "OwlAI Conversation",
+        filters=filters,
+        or_filters=[["owner", "=", user], ["sharing_type", "=", "Public"]],
+        fields=["name", "title", "modified"],
+        order_by="modified desc",
+        limit=limit,
+    )
 
 
 @frappe.whitelist()
-def update_owlai_settings(model=None, api_key=None, enable_analytics=None, provider=None):
-    """Update settings directly from Chat UI"""
-    if not frappe.session.user: return
-    settings = frappe.get_single("OwlAI Settings")
-    
-    # Provider Update
-    if provider:
-        settings.provider = provider
-        
-    # Model Update
-    if model:
-        # Check if it's a Gemini model
-        if "gemini" in model.lower() and "ollama" not in model.lower():
-             settings.gemini_model = model
-             if not provider: settings.provider = "Generative AI (Gemini)"
-        else:
-             # Assume Ollama or Link
-             settings.ollama_model = model
-             if not provider: settings.provider = "Local (Ollama)"
-             
-             # Also update the Default Agent's model to match, for immediate effect
-             if settings.default_agent:
-                 frappe.db.set_value("OwlAI Agent", settings.default_agent, "model", model)
+def new_conversation():
+    """Create a new empty conversation."""
+    conv = conv_store.load_or_create()
+    return {"conversation_id": conv.name}
 
-    if api_key:
-        settings.gemini_api_key = api_key
-    
+
+@frappe.whitelist()
+def delete_conversation(conversation_id):
+    """Delete a conversation. Only owner or System Manager allowed."""
+    if not conversation_id:
+        return {"status": "error", "message": "No conversation_id provided"}
+
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+
+        # Ownership check
+        if conv.owner != frappe.session.user and "System Manager" not in frappe.get_roles():
+            frappe.throw("You can only delete your own conversations", frappe.PermissionError)
+
+        frappe.delete_doc("OwlAI Conversation", conversation_id)
+        return {"status": "success"}
+    except frappe.PermissionError:
+        return {"status": "error", "message": "Permission denied"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def update_conversation_title(conversation_id, title):
+    """Rename a conversation. Only owner or System Manager allowed."""
+    if not conversation_id or not title:
+        return {"status": "error", "message": "Missing parameters"}
+
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+        if conv.owner != frappe.session.user and "System Manager" not in frappe.get_roles():
+            frappe.throw("Permission denied", frappe.PermissionError)
+
+        frappe.db.set_value("OwlAI Conversation", conversation_id, "title", title)
+        return {"status": "success"}
+    except frappe.PermissionError:
+        return {"status": "error", "message": "Permission denied"}
+    except Exception as e:
+        frappe.log_error(title="Error updating title", message=traceback.format_exc())
+        return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def get_conversation_messages(conversation_id):
+    """Load all messages for a conversation."""
+    if not conversation_id:
+        return []
+
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+        if not conv.has_permission("read"):
+            return []
+
+        messages = []
+        for m in conv.messages:
+            try:
+                action_data = json.loads(m.action_data) if m.action_data else None
+            except (json.JSONDecodeError, TypeError):
+                action_data = None
+
+            messages.append({
+                "role": m.role,
+                "content": _repair_links(m.content),
+                "message_type": m.message_type,
+                "creation": m.creation,
+                "idx": m.idx,
+                "action_data": action_data,
+            })
+        return messages
+    except Exception:
+        return []
+
+
+@frappe.whitelist()
+def get_conversation_info(conversation_id):
+    """Get conversation metadata."""
+    if not conversation_id:
+        return None
+
+    try:
+        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
+        if not conv.has_permission("read"):
+            return None
+        return {
+            "name": conv.name,
+            "title": conv.title,
+            "status": conv.status,
+            "modified": conv.modified,
+        }
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Settings (System Manager only)
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def update_owlai_settings(model=None, enable_analytics=None, **kwargs):
+    """Update OwlAI Settings. System Manager only."""
+    frappe.only_for("System Manager")
+
+    settings = frappe.get_single("OwlAI Settings")
+
+    if model and frappe.db.exists("OwlAI Model", model):
+        settings.default_model = model
     if enable_analytics is not None:
         settings.enable_analytics = int(enable_analytics)
 
@@ -616,137 +357,88 @@ def update_owlai_settings(model=None, api_key=None, enable_analytics=None, provi
 
 
 @frappe.whitelist()
-def get_conversations(limit=20, search_text=None):
-    user = frappe.session.user
-    filters = {"status": "Active"}
-    
-    if search_text:
-        filters["title"] = ["like", f"%{search_text}%"]
-
-    return frappe.get_all("OwlAI Conversation",
-        filters=filters,
-        or_filters=[["owner", "=", user], ["sharing_type", "=", "Public"]],
-        fields=["name", "title", "modified"],
-        order_by="modified desc",
-        limit=limit
-    )
-
-
-@frappe.whitelist()
-def new_conversation():
-    conv = get_or_create_conversation()
-    return {"conversation_id": conv.name}
-
-@frappe.whitelist()
-def delete_conversation(conversation_id):
-    if not conversation_id: return
-    try:
-        frappe.delete_doc("OwlAI Conversation", conversation_id)
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@frappe.whitelist()
-def update_conversation_title(conversation_id, title):
-    if not conversation_id or not title: return
-    try:
-        frappe.db.set_value("OwlAI Conversation", conversation_id, "title", title)
-        return {"status": "success"}
-    except Exception as e:
-        frappe.log_error(title="Error updating title", message=traceback.format_exc())
-        return {"status": "error", "message": str(e)}
-
-@frappe.whitelist()
 def clear_owlai_cache():
-    """Manually clear the OwlAI cache."""
+    """Clear the OwlAI Redis cache."""
     from tb_owlai_core.utils.cache import OwlCache
+
     OwlCache.clear()
     return {"status": "success", "message": "Cache cleared."}
 
+
+# ---------------------------------------------------------------------------
+# Health Check
+# ---------------------------------------------------------------------------
+
 @frappe.whitelist()
-def warm_up_owlai_cache():
-    """Pre-cache schemas for common DocTypes."""
-    from tb_owlai_core.agno_integrations.context_builder import introspect_doctype
-    from tb_owlai_core.utils.cache import OwlCache
-    
-    common = ["Customer", "Item", "Sales Order", "Purchase Order", "Sales Invoice", "Task", "ToDo"]
-    for dt in common:
-        schema = introspect_doctype(dt)
-        OwlCache.set("schema_introspect", dt, schema, 86400) # Cache for 24h
-        
-    return {"status": "success", "message": f"Cached schemas for {len(common)} DocTypes."}
+def health_check():
+    """Validate the OwlAI stack. System Manager only."""
+    frappe.only_for("System Manager")
+
+    import os
+    import requests
+
+    result = {
+        "ollama": False,
+        "ollama_models": [],
+        "default_agent": None,
+        "tools_count": 0,
+        "providers": [],
+        "models": [],
+    }
+
+    # Check Ollama
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        resp = requests.get(f"{ollama_host}/api/tags", timeout=2)
+        if resp.ok:
+            result["ollama"] = True
+            result["ollama_models"] = [
+                m["name"] for m in resp.json().get("models", [])
+            ]
+    except Exception:
+        pass
+
+    # Check config
+    try:
+        settings = frappe.get_single("OwlAI Settings")
+        result["default_agent"] = settings.default_agent
+    except Exception:
+        pass
+
+    result["tools_count"] = frappe.db.count("OwlAI Tool")
+    result["providers"] = frappe.get_all(
+        "OwlAI Provider", fields=["provider_name", "api_base", "is_default"]
+    )
+    result["models"] = frappe.get_all(
+        "OwlAI Model", fields=["model_name", "provider", "supports_function_calling"]
+    )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _repair_links(text):
-    """
-    Ensures that Links generated by the LLM match Frappe's case-sensitive naming.
-    Often LLMs lower-case the ID (e.g. /app/customer/suraj instead of /app/customer/Suraj).
-    """
+    """Fix case-sensitivity in Frappe document links generated by the LLM."""
     import re
-    if not text: return text
-    
-    # Simple regex to find /app/slug/ID
-    links = re.findall(r'(/app/([a-z0-9\-]+)/([a-zA-Z0-9\-\%_\.]+))', text)
-    
+
+    if not text:
+        return text
+
+    links = re.findall(r"(/app/([a-z0-9\-]+)/([a-zA-Z0-9\-\%_\.]+))", text)
+
     for full_match, slug, original_id in links:
-        # Try to find the correct casing in the DB if it's a known DocType
-        # 1. Resolve slug to Doctype
         doctype = slug.replace("-", " ").title()
         if not frappe.db.exists("DocType", doctype):
-            # Try fuzzy match if needed, but let's keep it simple
             continue
-            
-        # 2. Check if ID exists with exact casing
         if frappe.db.exists(doctype, original_id):
-            continue # Already correct
-            
-        # 3. Try to find the actual name (case-insensitive search)
-        # We use '%' just in case there are spaces/dashes mismatches
-        actual_name = frappe.db.get_value(doctype, {"name": ["like", original_id]}, "name")
+            continue
+        actual_name = frappe.db.get_value(
+            doctype, {"name": ["like", original_id]}, "name"
+        )
         if actual_name and actual_name != original_id:
-            # Repair the link in the text
-            old_link = full_match
-            new_link = f"/app/{slug}/{actual_name}"
-            text = text.replace(old_link, new_link)
-            
+            text = text.replace(full_match, f"/app/{slug}/{actual_name}")
+
     return text
-
-@frappe.whitelist()
-def get_conversation_messages(conversation_id):
-    if not conversation_id: return []
-    try:
-        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
-        if not conv.has_permission("read"): return []
-        
-        messages = []
-        for m in conv.messages:
-            try:
-                action_data = json.loads(m.action_data) if m.action_data else None
-            except:
-                action_data = None
-
-            messages.append({
-                "role": m.role,
-                "content": _repair_links(m.content), # Auto-repair links on load
-                "message_type": m.message_type,
-                "creation": m.creation,
-                "idx": m.idx,
-                "action_data": action_data
-            })
-        return messages
-    except:
-        return []
-
-@frappe.whitelist()
-def get_conversation_info(conversation_id):
-    if not conversation_id: return None
-    try:
-        conv = frappe.get_doc("OwlAI Conversation", conversation_id)
-        if not conv.has_permission("read"): return None
-        return {
-            "name": conv.name,
-            "title": conv.title,
-            "status": conv.status,
-            "modified": conv.modified
-        }
-    except:
-        return None

@@ -13,6 +13,9 @@ from tb_owlai_core.utils.context import OwlContext
 from tb_owlai_core.engine.core import OwlEngine
 from tb_owlai_core.engine import conversation as conv_store
 
+# SSE stream timeout (seconds) — prevents hung connections
+SSE_STREAM_TIMEOUT = 120
+
 
 # ---------------------------------------------------------------------------
 # Rate Limiting
@@ -138,6 +141,11 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
 
             try:
                 for event in engine.run_stream(text, context=agent_context):
+                    # Check stream timeout
+                    if time.time() - start_time > SSE_STREAM_TIMEOUT:
+                        timeout_msg = f"\n\n[Response timed out after {SSE_STREAM_TIMEOUT}s]"
+                        yield f"data: {json.dumps({'token': timeout_msg})}\n\n"
+                        break
                     yield event
 
                     # Track full response for analytics

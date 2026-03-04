@@ -314,6 +314,101 @@ class OwlMount {
                 color: var(--text-muted);
                 margin-top: 2px;
             }
+
+            /* Progress Steps */
+            .owl-progress-step {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 20px;
+                font-size: 12px;
+                color: var(--text-muted);
+                border-bottom: 1px solid var(--border-color);
+                animation: owlFadeIn 0.2s ease both;
+            }
+            .owl-progress-icon {
+                font-size: 14px;
+                line-height: 1;
+                flex-shrink: 0;
+            }
+            .owl-progress-icon.done { color: #059669; }
+            .owl-progress-icon.error { color: var(--red-600, #dc2626); }
+            .owl-progress-icon.pending { color: var(--primary-color); }
+            .owl-progress-text { flex: 1; }
+
+            /* Disambiguation Cards */
+            .owl-disambiguation-container {
+                padding: 10px 20px;
+                border-bottom: 1px solid var(--border-color);
+                background: var(--bg-color);
+                animation: owlFadeIn 0.2s ease both;
+            }
+            .owl-disambiguation-label {
+                font-size: 12px;
+                color: var(--text-muted);
+                margin-bottom: 8px;
+            }
+            .owl-disambiguation-cards {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .owl-disambiguation-card {
+                padding: 8px 14px;
+                border-radius: 8px;
+                border: 1px solid var(--border-color);
+                background: var(--card-bg, #fff);
+                cursor: pointer;
+                font-size: 13px;
+                color: var(--text-color);
+                transition: border-color 0.15s, background 0.15s;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                text-align: left;
+            }
+            .owl-disambiguation-card:hover {
+                border-color: var(--primary-color);
+                background: var(--bg-light-gray);
+            }
+            .owl-disambiguation-type {
+                font-size: 11px;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .owl-disambiguation-name {
+                font-weight: 500;
+            }
+
+            /* Suggestion Chips */
+            .owl-suggestion-chips {
+                padding: 8px 20px;
+                border-bottom: 1px solid var(--border-color);
+                display: flex;
+                gap: 8px;
+                overflow-x: auto;
+                background: var(--bg-color);
+                scrollbar-width: none;
+            }
+            .owl-suggestion-chips::-webkit-scrollbar { display: none; }
+            .owl-chip {
+                flex-shrink: 0;
+                padding: 4px 12px;
+                border-radius: 20px;
+                border: 1px solid var(--border-color);
+                background: var(--card-bg, #fff);
+                color: var(--text-muted);
+                font-size: 12px;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: border-color 0.15s, color 0.15s, background 0.15s;
+            }
+            .owl-chip:hover {
+                border-color: var(--primary-color);
+                color: var(--primary-color);
+                background: var(--bg-light-gray);
+            }
         `;
         document.head.appendChild(style);
     }
@@ -421,6 +516,7 @@ class OwlMount {
             setTimeout(() => {
                 wrapper.classList.add('active');
                 if (!this.is_minimized) input.focus();
+                this._render_suggestion_chips();
             }, 10);
         } else {
             wrapper.classList.remove('active', 'minimized');
@@ -601,6 +697,11 @@ class OwlMount {
                     // Handle error events from SSE
                     if (line.trim().startsWith('event: error')) continue;
 
+                    // Handle progress events
+                    if (line.trim().startsWith('event: progress')) {
+                        continue; // The data line follows
+                    }
+
                     if (line.trim().startsWith('data: ')) {
                         const dataStr = line.replace('data: ', '').trim();
                         if (dataStr === '[DONE]') break;
@@ -629,6 +730,22 @@ class OwlMount {
                                 });
                             }
 
+                            if (data.progress) {
+                                const progressDiv = this._render_progress_step(data.progress);
+                                if (progressDiv) {
+                                    contentDiv.insertBefore(progressDiv, msgDiv);
+                                    contentDiv.scrollTop = contentDiv.scrollHeight;
+                                }
+                            }
+
+                            if (data.disambiguation) {
+                                const disambigDiv = this._render_disambiguation(data.disambiguation);
+                                if (disambigDiv) {
+                                    contentDiv.insertBefore(disambigDiv, msgDiv);
+                                    contentDiv.scrollTop = contentDiv.scrollHeight;
+                                }
+                            }
+
                             if (data.token) {
                                 fullText += data.token;
                                 let displayUpdate = fullText
@@ -650,6 +767,114 @@ class OwlMount {
         } catch (error) {
             loadingDiv.remove();
             this.append_message('system', error.message, 'error');
+        }
+    }
+
+    _render_progress_step(progress) {
+        const div = document.createElement('div');
+        div.className = 'owl-progress-step';
+        const icon = progress.status === 'done' ? '&#10003;' : progress.status === 'error' ? '&#10007;' : '&#8635;';
+        const statusClass = progress.status === 'done' ? 'done' : progress.status === 'error' ? 'error' : 'pending';
+        div.innerHTML = `<span class="owl-progress-icon ${statusClass}">${icon}</span><span class="owl-progress-text">${progress.message || ''}</span>`;
+        return div;
+    }
+
+    _render_disambiguation(disambiguation) {
+        const div = document.createElement('div');
+        div.className = 'owl-disambiguation-container';
+
+        let html = `<div class="owl-disambiguation-label">${disambiguation.message || 'Multiple matches found:'}</div><div class="owl-disambiguation-cards">`;
+
+        for (const option of (disambiguation.options || [])) {
+            html += `<button class="owl-disambiguation-card" data-value="${option.name}" data-doctype="${option.doctype}">
+                <span class="owl-disambiguation-type">${option.doctype}</span>
+                <span class="owl-disambiguation-name">${option.display_name || option.name}</span>
+            </button>`;
+        }
+        html += '</div>';
+        div.innerHTML = html;
+
+        // Add click handlers
+        div.querySelectorAll('.owl-disambiguation-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const value = card.dataset.value;
+                const doctype = card.dataset.doctype;
+                const input = document.getElementById('owl-input');
+                input.value = `Use ${doctype}: ${value}`;
+                input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}));
+            });
+        });
+
+        return div;
+    }
+
+    _get_suggestion_chips() {
+        const route = frappe.get_route_str();
+        const parts = (route || '').split('/');
+        const doctype = parts[1];
+
+        if (!doctype) return [];
+
+        const chipMap = {
+            'Employee': [
+                {label: 'Leave balance', query: 'What is my leave balance?'},
+                {label: 'Expense claims', query: 'Show pending expense claims'},
+                {label: 'Attendance', query: 'Show attendance this month'},
+            ],
+            'Customer': [
+                {label: 'Outstanding', query: `What is the outstanding balance for this customer?`},
+                {label: 'Recent invoices', query: 'Show recent sales invoices for this customer'},
+                {label: 'Sales summary', query: 'Sales summary for this customer'},
+            ],
+            'Sales Order': [
+                {label: "Today's orders", query: 'How many sales orders today?'},
+                {label: 'Pending delivery', query: 'Show sales orders pending delivery'},
+                {label: 'Sales summary', query: 'Show sales summary for this month'},
+            ],
+            'Sales Invoice': [
+                {label: "Today's sales", query: 'Show today sales summary'},
+                {label: 'Outstanding', query: 'Show total outstanding invoices'},
+                {label: 'Top items', query: 'What are top selling items this month?'},
+            ],
+            'Item': [
+                {label: 'Stock balance', query: 'What is the stock balance for this item?'},
+                {label: 'Sales history', query: 'Show sales history for this item'},
+            ],
+            'Supplier': [
+                {label: 'Outstanding', query: 'What is outstanding for this supplier?'},
+                {label: 'Recent bills', query: 'Show recent purchase invoices from this supplier'},
+            ],
+        };
+
+        return chipMap[doctype] || [];
+    }
+
+    _render_suggestion_chips() {
+        const existingChips = document.querySelector('.owl-suggestion-chips');
+        if (existingChips) existingChips.remove();
+
+        const chips = this._get_suggestion_chips();
+        if (!chips.length) return;
+
+        const container = document.createElement('div');
+        container.className = 'owl-suggestion-chips';
+
+        for (const chip of chips) {
+            const btn = document.createElement('button');
+            btn.className = 'owl-chip';
+            btn.textContent = chip.label;
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('owl-input');
+                input.value = chip.query;
+                this.handle_input(new KeyboardEvent('keydown', {key: 'Enter'}));
+            });
+            container.appendChild(btn);
+        }
+
+        // Insert after the input bar
+        const bar = document.querySelector('.owl-bar');
+        if (bar) {
+            bar.parentNode.insertBefore(container, bar.nextSibling);
         }
     }
 

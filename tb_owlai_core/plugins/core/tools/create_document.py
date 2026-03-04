@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 import frappe
+from frappe.utils import today, add_days
 from tb_owlai_core.plugins.base import BaseTool
 
 class CreateDocumentSchema(BaseModel):
@@ -61,6 +62,73 @@ class CreateDocument(BaseTool):
                     new_data[key] = value
             data = new_data
             
+            # --- SMART DEFAULTS (fill before mandatory check) ---
+            _smart_defaults = {}
+
+            # Company
+            if "company" not in data:
+                _company = frappe.defaults.get_user_default("Company")
+                if _company and meta.has_field("company"):
+                    _smart_defaults["company"] = _company
+
+            # Currency
+            if "currency" not in data and meta.has_field("currency"):
+                _currency = frappe.defaults.get_user_default("Currency")
+                if not _currency:
+                    _cmp = data.get("company") or _smart_defaults.get("company")
+                    if _cmp:
+                        try:
+                            _currency = frappe.db.get_value("Company", _cmp, "default_currency")
+                        except Exception:
+                            pass
+                if _currency:
+                    _smart_defaults["currency"] = _currency
+
+            # Dates
+            if "posting_date" not in data and meta.has_field("posting_date"):
+                _smart_defaults["posting_date"] = today()
+            if "delivery_date" not in data and meta.has_field("delivery_date"):
+                _smart_defaults["delivery_date"] = add_days(today(), 7)
+            if "transaction_date" not in data and meta.has_field("transaction_date"):
+                _smart_defaults["transaction_date"] = today()
+            if "due_date" not in data and meta.has_field("due_date"):
+                _smart_defaults["due_date"] = add_days(today(), 30)
+
+            # Warehouse
+            if "warehouse" not in data and meta.has_field("warehouse"):
+                _wh = frappe.defaults.get_user_default("Warehouse")
+                if _wh:
+                    _smart_defaults["warehouse"] = _wh
+
+            # Cost Center
+            if "cost_center" not in data and meta.has_field("cost_center"):
+                _cc = frappe.defaults.get_user_default("Cost Center")
+                if not _cc:
+                    _cmp = data.get("company") or _smart_defaults.get("company")
+                    if _cmp:
+                        try:
+                            _cc = frappe.db.get_value("Company", _cmp, "cost_center")
+                        except Exception:
+                            pass
+                if _cc:
+                    _smart_defaults["cost_center"] = _cc
+
+            # Merge smart defaults into data (user data takes precedence)
+            merged_data = {**_smart_defaults, **data}
+
+            # --- FIELD INFERRER INTEGRATION ---
+            try:
+                from tb_owlai_core.intelligence.field_inferrer import infer_fields
+                inferred = infer_fields(doctype, merged_data)
+                # Only fill fields not already in merged_data
+                for k, v in inferred.items():
+                    if k not in merged_data and v is not None:
+                        merged_data[k] = v
+            except Exception:
+                pass
+
+            data = merged_data
+
             # Use frappe.new_doc to handle defaults and then check mandatory
             temp_doc = frappe.new_doc(doctype)
             for k, v in data.items():

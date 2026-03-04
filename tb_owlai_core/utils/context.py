@@ -236,3 +236,73 @@ SCHEMA INFORMATION:
             return "\n".join(lines) if len(lines) > 1 else ""
         except Exception:
             return ""
+
+    def get_entity_context(self, user_message):
+        """Layer 5: Entity context from entity resolver.
+
+        Runs the entity resolver on the user message and returns
+        a formatted string of resolved entities (customers, suppliers, etc.).
+        """
+        try:
+            from tb_owlai_core.intelligence.entity_resolver import resolve_entities
+            entities = resolve_entities(user_message)
+            if not entities:
+                return ""
+
+            lines = ["\nRESOLVED ENTITIES:"]
+            for entity in entities:
+                doctype = entity.get("doctype", "")
+                name = entity.get("name", "")
+                display = entity.get("display_name") or name
+                original = entity.get("original_text", "")
+                if doctype and name:
+                    lines.append(f"- '{original}' -> {doctype}: {display} ({name})")
+
+            return "\n".join(lines) if len(lines) > 1 else ""
+        except Exception:
+            return ""
+
+    def get_user_defaults_context(self):
+        """Expose all relevant user defaults as a context string."""
+        try:
+            default_keys = [
+                "Company", "Currency", "Warehouse", "Cost Center",
+                "Department", "Territory", "Price List", "Letter Head",
+            ]
+            defaults = {}
+            for key in default_keys:
+                val = frappe.defaults.get_user_default(key)
+                if val:
+                    defaults[key] = val
+
+            if not defaults:
+                return ""
+
+            lines = ["\nUSER DEFAULTS:"]
+            for k, v in defaults.items():
+                lines.append(f"- {k}: {v}")
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def get_recent_activity_context(self):
+        """Get last 5 OwlAI Messages for conversation continuity."""
+        try:
+            messages = frappe.get_all(
+                "OwlAI Message",
+                filters={"owner": frappe.session.user},
+                fields=["role", "content", "creation"],
+                order_by="creation desc",
+                limit_page_length=5,
+            )
+            if not messages:
+                return ""
+
+            lines = ["\nRECENT ACTIVITY:"]
+            for msg in reversed(messages):
+                role = msg.get("role", "")
+                content = (msg.get("content") or "")[:150]
+                lines.append(f"- [{role}] {content}")
+            return "\n".join(lines)
+        except Exception:
+            return ""

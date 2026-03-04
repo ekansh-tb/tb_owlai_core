@@ -51,6 +51,16 @@ class CorePlugin(BasePlugin):
             # Utilities
             "frappe_utils",
             "context_tools",
+
+            # Financial Intelligence
+            "get_account_balance",
+            "get_party_outstanding",
+            "get_general_ledger",
+            "get_sales_summary",
+            "get_stock_balance",
+
+            # Get-or-Create
+            "ensure_exists",
         ]
 
     def validate_environment(self):

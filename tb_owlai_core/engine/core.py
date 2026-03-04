@@ -373,15 +373,34 @@ class OwlEngine:
     # Internals
     # ------------------------------------------------------------------
 
+    # Token budget: max total chars across all messages before trimming older ones
+    MAX_CONTEXT_CHARS = 24000  # ~6000 tokens for 7B models with 8K context
+    TOOL_EXECUTION_TIMEOUT = 30  # seconds
+
     def _build_messages(self, user_message, context):
         """Assemble the full message list for the LLM.
 
         Note: The current user message is already saved to the conversation
         before this method is called, so get_history() already includes it.
         We do NOT append it again to avoid duplication.
+
+        Applies token budget guard: trims older messages if total exceeds threshold.
         """
         messages = [{"role": "system", "content": self._build_system_prompt(context, user_message)}]
-        messages.extend(conv_store.get_history(self.conversation))
+        history = conv_store.get_history(self.conversation)
+
+        # Token budget guard: trim older messages if exceeding context window
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        trimmed_history = []
+        for msg in reversed(history):
+            msg_chars = len(msg.get("content", ""))
+            if total_chars + msg_chars > self.MAX_CONTEXT_CHARS and trimmed_history:
+                break
+            trimmed_history.append(msg)
+            total_chars += msg_chars
+
+        trimmed_history.reverse()
+        messages.extend(trimmed_history)
         return messages
 
     def _build_system_prompt(self, context, user_message=None):
@@ -425,6 +444,22 @@ class OwlEngine:
         # Layer 6: Dynamic few-shot examples from detected DocTypes
         examples = self._build_dynamic_examples(user_message, context)
 
+        # Layer 7: Entity context (resolved names from user message)
+        entity_ctx = ""
+        if user_message and context:
+            entity_ctx = context.get_entity_context(user_message)
+
+        # Layer 8: Enhanced prompt templates (multi-step, language, financial)
+        enhanced_prompt = ""
+        try:
+            from tb_owlai_core.intelligence.prompt_templates import get_full_enhanced_prompt
+            enhanced_prompt = get_full_enhanced_prompt()
+        except Exception:
+            pass
+
+        # Layer 9: User defaults context
+        defaults_ctx = context.get_user_defaults_context() if context else ""
+
         # Token budget: keep total under ~2000 tokens
         if len(domain_ctx) > 800:
             domain_ctx = domain_ctx[:800]
@@ -432,6 +467,8 @@ class OwlEngine:
             viewport = viewport[:2000]
         if len(knowledge_ctx) > 1200:
             knowledge_ctx = knowledge_ctx[:1200]
+        if len(enhanced_prompt) > 1500:
+            enhanced_prompt = enhanced_prompt[:1500]
 
         return f"""You are OwlAI, an intelligent assistant for Frappe site: {site}.
 
@@ -439,7 +476,8 @@ RULES:
 1. ALWAYS use tool calls to answer questions — never describe what you would do, just do it.
 2. If a tool returns an error, STOP calling tools. Explain the error to the user and ask for missing info.
 3. After getting tool results, respond with a natural language summary.
-4. Never retry a failed tool call with the same arguments.{custom_prompt}{domain_ctx}{user_ctx}{tool_guidance}{examples}
+4. Never retry a failed tool call with the same arguments.
+5. Respond in the same language the user writes in (Hindi, Hinglish, English, etc.).{custom_prompt}{domain_ctx}{user_ctx}{defaults_ctx}{tool_guidance}{examples}{entity_ctx}{enhanced_prompt}
 {viewport}{knowledge_ctx}"""
 
     def _build_dynamic_examples(self, user_message=None, context=None):
@@ -509,6 +547,12 @@ RULES:
             "get_doctype_info": "Get field schema for a DocType.",
             "update_document": "Update fields on an existing document.",
             "delete_document": "Delete a document by name.",
+            "get_account_balance": "Get account/cash/bank balance. Use for balance sheet queries.",
+            "get_party_outstanding": "Get outstanding receivables/payables for a customer or supplier.",
+            "get_general_ledger": "Get GL entries / ledger for an account or party.",
+            "get_sales_summary": "Get sales revenue summary by period, customer, or item.",
+            "get_stock_balance": "Get current stock/inventory levels for an item or warehouse.",
+            "ensure_exists": "Find a record or create it if missing (get-or-create).",
         }
 
         lines = ["\nAvailable tools:"]
@@ -589,6 +633,20 @@ RULES:
             "get": ["get_document"],
             "schema": ["get_doctype_info"],
             "fields": ["get_doctype_info"],
+            # Financial intelligence
+            "balance": ["get_account_balance"],
+            "cash": ["get_account_balance"],
+            "bank": ["get_account_balance"],
+            "outstanding": ["get_party_outstanding"],
+            "receivable": ["get_party_outstanding"],
+            "payable": ["get_party_outstanding"],
+            "ledger": ["get_general_ledger"],
+            "gl": ["get_general_ledger"],
+            "sales": ["get_sales_summary"],
+            "revenue": ["get_sales_summary"],
+            "stock": ["get_stock_balance"],
+            "inventory": ["get_stock_balance"],
+            "payment": ["get_party_outstanding"],
         }
 
         scores = {}
@@ -665,6 +723,12 @@ RULES:
             "search_documents": "Search for documents.",
             "get_doctype_info": "Get DocType field schema.",
             "frappe_utils": "Run a utility function.",
+            "get_account_balance": "Get account/bank/cash balance.",
+            "get_party_outstanding": "Get outstanding receivables/payables.",
+            "get_general_ledger": "Get GL entries for an account.",
+            "get_sales_summary": "Get sales revenue summary.",
+            "get_stock_balance": "Get stock/inventory levels.",
+            "ensure_exists": "Find or create a record.",
         }
         return compact.get(name, (description or "")[:80])
 
@@ -701,9 +765,22 @@ RULES:
         """Execute a named tool. Returns (result_json_string, action_dict_or_none).
 
         Checks static plugin tools first, then falls back to dynamic tools
-        generated by the tool factory.
+        generated by the tool factory. Enforces execution timeout.
         """
+        import signal
+
+        def _timeout_handler(signum, frame):
+            raise TimeoutError(f"Tool '{name}' timed out after {self.TOOL_EXECUTION_TIMEOUT}s")
+
         try:
+            # Set execution timeout (Unix only, graceful fallback on other OS)
+            old_handler = None
+            try:
+                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(self.TOOL_EXECUTION_TIMEOUT)
+            except (AttributeError, ValueError):
+                pass  # signal.SIGALRM not available (Windows) or not main thread
+
             # 1. Try static plugin tools first
             tool = self.plugin_manager.get_tool(name)
             if tool:
@@ -713,6 +790,14 @@ RULES:
                 result = self._execute_dynamic_tool(name, arguments)
                 if result is None:
                     return json.dumps({"error": f"Tool '{name}' not found"}), None
+
+            # Cancel timeout
+            try:
+                signal.alarm(0)
+                if old_handler is not None:
+                    signal.signal(signal.SIGALRM, old_handler)
+            except (AttributeError, ValueError):
+                pass
 
             # Detect navigation/action in result
             action = None
@@ -798,7 +883,9 @@ def _extract_text_tool_calls(text, enabled_tools=None):
 
     known_tools = {"list_documents", "get_document", "create_document",
                   "update_document", "delete_document", "search_documents",
-                  "navigate", "get_doctype_info", "frappe_utils"}
+                  "navigate", "get_doctype_info", "frappe_utils",
+                  "get_account_balance", "get_party_outstanding", "get_general_ledger",
+                  "get_sales_summary", "get_stock_balance", "ensure_exists"}
 
     # Intersect with enabled tools if provided — security gate
     allowed = known_tools & enabled_tools if enabled_tools else known_tools

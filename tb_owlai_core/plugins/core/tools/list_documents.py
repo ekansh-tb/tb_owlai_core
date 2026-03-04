@@ -1,14 +1,14 @@
-from pydantic import BaseModel, Field, AliasChoices
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
 
 class ListDocumentsSchema(BaseModel):
-    doctype: str = Field(..., description="DocType name", validation_alias=AliasChoices("doc_type", "DocType", "doctype"))
+    doctype: str = Field(..., description="The Frappe DocType name (e.g. 'Employee', 'Sales Order', 'Branch')")
     filters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Key-value filters (e.g. {'status': 'Open'})")
     fields: Optional[List[str]] = Field(default=["name", "modified", "modified_by", "owner"], description="Fields to fetch")
-    limit_start: Optional[int] = Field(0, description="Start index")
-    limit_page_length: Optional[int] = Field(20, description="Number of records to fetch")
+    limit_start: Optional[int] = Field(0, description="Start index for pagination")
+    limit_page_length: Optional[int] = Field(20, description="Number of records to fetch. Use 0 to get only the count.")
     order_by: Optional[str] = Field("modified desc", description="Order by field")
 
 class ListDocuments(BaseTool):

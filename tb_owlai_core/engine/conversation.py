@@ -78,14 +78,26 @@ def get_history(conversation, limit=None):
     return history
 
 
-def save_message(conversation, role, content, message_type="text", action_data=None):
+def save_message(conversation, role, content, message_type="text", action_data=None, tool_call_id=None, tool_name=None):
     """Append a message to the conversation's child table."""
-    conversation.append("messages", {
+    if tool_call_id:
+        action_data = action_data or {}
+        action_data["tool_call_id"] = tool_call_id
+        if tool_name:
+            action_data["tool_name"] = tool_name
+
+    row = {
         "role": role,
         "content": (content or "")[:100000],
         "message_type": message_type,
         "action_data": json.dumps(action_data, default=str) if action_data else None,
-    })
+    }
+    if tool_call_id:
+        row["tool_call_id"] = tool_call_id
+    if tool_name:
+        row["tool_name"] = tool_name
+
+    conversation.append("messages", row)
     conversation.message_count = len(conversation.messages)
     conversation.save(ignore_permissions=True)
     frappe.db.commit()

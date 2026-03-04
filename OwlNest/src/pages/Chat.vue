@@ -380,6 +380,18 @@ function handleAction(action_data) {
         const actionParams = tool.parameters || tool.tool_args || tool.arguments || {}
         if (!actionName) return
 
+        // Direct navigation in standalone mode (not embedded in Desk)
+        if (actionName === 'navigate' && !bridge.isEmbedded) {
+            const doctype = actionParams.doctype || actionParams.parameters?.doctype
+            if (doctype) {
+                const slug = doctype.toLowerCase().replace(/ /g, '-')
+                const docname = actionParams.docname || actionParams.parameters?.docname
+                const url = docname ? `/app/${slug}/${docname}` : `/app/${slug}`
+                window.location.href = window.location.origin + url
+                return
+            }
+        }
+
         bridge.send('EXECUTE_ACTION', {
             action: actionName === 'navigate' ? 'navigate' : actionName,
             ...actionParams

@@ -95,7 +95,16 @@ class BaseTool(ABC):
             # 2. Permission Check
             self.check_permission()
 
-            # 3. Argument Validation & Parsing
+            # 3. Normalize common LLM field name variants
+            _alias_map = {
+                "doc_type": "doctype", "DocType": "doctype", "document_type": "doctype",
+                "doc_name": "docname", "DocName": "docname", "document_name": "docname",
+            }
+            for alias, canonical in _alias_map.items():
+                if alias in arguments and canonical not in arguments:
+                    arguments[canonical] = arguments.pop(alias)
+
+            # 4. Argument Validation & Parsing
             cleaned_args = arguments
             if self.args_schema:
                 try:
@@ -105,8 +114,8 @@ class BaseTool(ABC):
                 except ValidationError as ve:
                     # Provide clear error message
                     return {
-                        "success": False, 
-                        "error": f"Invalid Arguments: {ve.errors()}", 
+                        "success": False,
+                        "error": f"Invalid Arguments: {ve.errors()}",
                         "error_type": "ValidationError"
                     }
 

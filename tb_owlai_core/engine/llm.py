@@ -129,7 +129,7 @@ class OllamaClient:
 
     def format_tool_result_message(self, tool_call_id, content):
         """Format a tool result message for Ollama."""
-        return {"role": "tool", "content": str(content)}
+        return {"role": "tool", "content": str(content), "tool_call_id": tool_call_id}
 
     def format_assistant_tool_call_message(self, content, tool_calls):
         """Format an assistant message containing tool calls for Ollama."""
@@ -156,6 +156,8 @@ class OllamaClient:
             clean = {"role": msg["role"], "content": msg.get("content", "") or ""}
             if msg.get("tool_calls"):
                 clean["tool_calls"] = msg["tool_calls"]
+            if msg.get("tool_call_id"):
+                clean["tool_call_id"] = msg["tool_call_id"]
             cleaned.append(clean)
         return cleaned
 

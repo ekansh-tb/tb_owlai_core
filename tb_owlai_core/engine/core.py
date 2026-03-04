@@ -91,6 +91,16 @@ class OwlEngine:
                 )
             )
 
+            # Persist assistant tool_call message
+            conv_store.save_message(
+                self.conversation, "assistant", response.content,
+                message_type="tool_call",
+                action_data={"tool_calls": [
+                    {"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]}
+                    for tc in response.tool_calls
+                ]}
+            )
+
             # Execute each tool, append results
             for tc in response.tool_calls:
                 result_str, action = self._execute_tool(tc["name"], tc["arguments"])
@@ -98,6 +108,13 @@ class OwlEngine:
                     actions.append(action)
                 messages.append(
                     self.client.format_tool_result_message(tc["id"], result_str)
+                )
+                # Persist tool result message
+                conv_store.save_message(
+                    self.conversation, "tool", result_str,
+                    message_type="tool_result",
+                    tool_call_id=tc["id"],
+                    tool_name=tc["name"]
                 )
 
         reply = response.content if response else ""
@@ -165,6 +182,16 @@ class OwlEngine:
                         )
                     )
 
+                    # Persist assistant tool_call message
+                    conv_store.save_message(
+                        self.conversation, "assistant", content_buffer,
+                        message_type="tool_call",
+                        action_data={"tool_calls": [
+                            {"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]}
+                            for tc in tool_calls
+                        ]}
+                    )
+
                     for tc in tool_calls:
                         result_str, action = self._execute_tool(
                             tc["name"], tc["arguments"]
@@ -176,6 +203,13 @@ class OwlEngine:
                             self.client.format_tool_result_message(
                                 tc["id"], result_str
                             )
+                        )
+                        # Persist tool result message
+                        conv_store.save_message(
+                            self.conversation, "tool", result_str,
+                            message_type="tool_result",
+                            tool_call_id=tc["id"],
+                            tool_name=tc["name"]
                         )
                 else:
                     # Final text response — already streamed
@@ -249,6 +283,9 @@ class OwlEngine:
         # Viewport context (route, schema, form data)
         viewport = context.get_full_context_string() if context else ""
 
+        # Tool usage guidance
+        tool_guidance = self._build_tool_guidance()
+
         return f"""You are OwlAI, the intelligent assistant for this Frappe system.
 
 Site: {site}
@@ -258,16 +295,51 @@ Roles: {', '.join(roles)}
 Company: {company}
 
 RULES:
-1. Use tools to take action. If the user's intent is clear, act immediately.
+1. ALWAYS use tools for data queries. Never guess or fabricate data.
 2. When you create or find records, provide clickable links: [View {{name}}](/app/{{slug}}/{{name}})
    - slug = DocType name lowercased with hyphens: 'Sales Order' -> 'sales-order'
    - name must match the tool output EXACTLY (case-sensitive)
 3. Respect permissions. If a tool returns a permission error, explain it to the user.
 4. Use get_doctype_info BEFORE creating documents if you are unsure of mandatory fields.
 5. If the user says 'this document', 'submit it', or 'the order', use the viewport context below.
-6. For navigation ('show me', 'open', 'go to'), use the navigate tool.
+6. For navigation ('show me', 'open', 'go to'), ALWAYS use the navigate tool.
+7. For counting ('how many'), use list_documents with limit_page_length=0.
+8. Act immediately when intent is clear. Do not ask for confirmation on simple queries.
 
+{tool_guidance}
 {viewport}{custom_prompt}"""
+
+    def _build_tool_guidance(self):
+        """Generate dynamic tool usage examples from registered tools."""
+        tools = self.plugin_manager.tools
+        lines = ["TOOL USAGE GUIDE:"]
+
+        tool_examples = {
+            "list_documents": (
+                'List or count records of any DocType.\n'
+                '  To count: {"doctype": "Employee", "limit_page_length": 0}\n'
+                '  To list:  {"doctype": "Sales Order", "filters": {"status": "Draft"}, "limit_page_length": 10}'
+            ),
+            "navigate": (
+                'Navigate user to a DocType list or form view.\n'
+                '  To list view: {"doctype": "Employee"}\n'
+                '  To form view: {"doctype": "Employee", "docname": "HR-EMP-00001"}'
+            ),
+            "get_document": 'Fetch a single document by name. {"doctype": "Employee", "name": "HR-EMP-00001"}',
+            "create_document": 'Create a new document. Use get_doctype_info first to check mandatory fields.',
+            "search_documents": 'Full-text search across DocTypes. {"query": "John", "doctype": "Employee"}',
+            "get_doctype_info": 'Get field schema and metadata for a DocType. {"doctype": "Sales Order"}',
+            "update_document": 'Update fields on an existing document.',
+            "delete_document": 'Delete a document by name.',
+        }
+
+        for tool_name, tool_instance in tools.items():
+            if tool_name in tool_examples:
+                lines.append(f"- {tool_name}: {tool_examples[tool_name]}")
+            else:
+                lines.append(f"- {tool_name}: {tool_instance.description}")
+
+        return "\n".join(lines)
 
     def _get_tool_schemas(self):
         """Convert plugin BaseTool instances to OpenAI function-calling schemas."""
@@ -288,10 +360,7 @@ RULES:
             if hasattr(tool_instance, "args_schema") and tool_instance.args_schema:
                 try:
                     schema = tool_instance.args_schema.model_json_schema()
-                    # Strip Pydantic artifacts
-                    schema.pop("title", None)
-                    if "$defs" in schema:
-                        schema.pop("$defs", None)
+                    schema = self._simplify_tool_schema(schema)
                 except Exception:
                     schema = getattr(tool_instance, "inputSchema", {"type": "object", "properties": {}})
             elif hasattr(tool_instance, "inputSchema") and tool_instance.inputSchema:
@@ -309,6 +378,35 @@ RULES:
             })
 
         return tools
+
+    @staticmethod
+    def _simplify_tool_schema(schema):
+        """Flatten Pydantic anyOf wrappers so LLMs can parse tool schemas.
+
+        Pydantic wraps Optional[str] as {"anyOf": [{"type": "string"}, {"type": "null"}]}.
+        Most LLMs (especially local ones) expect simple {"type": "string"}.
+        """
+        schema.pop("title", None)
+        schema.pop("$defs", None)
+
+        props = schema.get("properties", {})
+        for key, prop in props.items():
+            prop.pop("title", None)
+            prop.pop("default", None)
+
+            # Flatten anyOf: [{type: X}, {type: null}] → {type: X}
+            if "anyOf" in prop:
+                any_of = prop["anyOf"]
+                non_null = [t for t in any_of if t.get("type") != "null"]
+                if len(non_null) == 1:
+                    # Preserve description before replacing
+                    desc = prop.get("description")
+                    prop.clear()
+                    prop.update(non_null[0])
+                    if desc:
+                        prop["description"] = desc
+
+        return schema
 
     def _execute_tool(self, name, arguments):
         """Execute a named tool. Returns (result_json_string, action_dict_or_none)."""

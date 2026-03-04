@@ -53,7 +53,7 @@ export class Bridge {
                 targetUrl += `/${docname}`;
             }
 
-            window.open(targetUrl, '_blank');
+            window.location.href = targetUrl;
         }
     }
 }

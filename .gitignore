@@ -39,3 +39,4 @@ tb_owlai_core/public/owlnest/assets/
 tb_owlai_core/public/owlnest/assets/*
 .omc/*
 .omc/
+OwlNest/yarn.lock

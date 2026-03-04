@@ -9,8 +9,11 @@ class OwlMount {
         this.is_open = false;
         this.is_minimized = false;
         this.mount_point_id = "owl-spotlight-wrapper";
-        this.conversation_id = null;
         this.markdown_loaded = false;
+
+        // Conversation persistence — survive minimize/close cycles
+        this.conversation_id = sessionStorage.getItem('owlai_conversation_id') || null;
+        this._last_route = sessionStorage.getItem('owlai_last_route') || null;
 
         if (typeof frappe !== 'undefined') {
             frappe.run_serially([
@@ -271,6 +274,10 @@ class OwlMount {
                 flex-direction: column;
                 gap: 4px;
             }
+            .owl-action-card.error {
+                border-color: var(--red-200, #fecaca);
+                background: var(--red-50, #fef2f2);
+            }
             .owl-action-header {
                 font-size: 11px;
                 font-weight: 700;
@@ -279,6 +286,14 @@ class OwlMount {
                 display: flex;
                 align-items: center;
                 gap: 6px;
+            }
+            .owl-action-header.error {
+                color: var(--red-600, #dc2626);
+            }
+            .owl-action-detail {
+                font-size: 12px;
+                color: var(--text-muted);
+                margin-top: 2px;
             }
         `;
         document.head.appendChild(style);
@@ -432,18 +447,30 @@ class OwlMount {
         }
     }
 
-    append_message(role, content, message_type = 'text') {
+    append_message(role, content, message_type = 'text', meta = {}) {
         const container = document.getElementById('owl-content');
         const msgDiv = document.createElement('div');
         msgDiv.className = `owl-message ${role}`;
 
         if (message_type === 'action') {
+            const detail = meta.detail || '';
             msgDiv.innerHTML = `
                 <div class="owl-action-card">
                     <div class="owl-action-header">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        Action Dispatched: ${content}
+                        ${content}
                     </div>
+                    ${detail ? `<div class="owl-action-detail">${detail}</div>` : ''}
+                </div>
+            `;
+        } else if (message_type === 'error') {
+            msgDiv.innerHTML = `
+                <div class="owl-action-card error">
+                    <div class="owl-action-header error">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                        Error
+                    </div>
+                    <div class="owl-action-detail">${content}</div>
                 </div>
             `;
         } else {
@@ -464,6 +491,29 @@ class OwlMount {
         return msgDiv;
     }
 
+    _should_start_new_conversation() {
+        // Smart conversation continuity based on route context
+        const currentRoute = frappe.get_route_str();
+        if (!this.conversation_id) return true;
+        if (!this._last_route) return false;
+
+        // Extract doctype from routes like "Form/Employee/EMP-001" or "List/Employee"
+        const getDoctype = (route) => {
+            const parts = (route || '').split('/');
+            if (parts[0] === 'Form' || parts[0] === 'List') return parts[1];
+            return parts[0];
+        };
+
+        const lastDt = getDoctype(this._last_route);
+        const currentDt = getDoctype(currentRoute);
+
+        // Same DocType context — continue conversation
+        if (lastDt === currentDt) return false;
+
+        // Different DocType — start new conversation
+        return true;
+    }
+
     async stream_response(text) {
         const contentDiv = document.getElementById('owl-content');
         const msgDiv = this.append_message('assistant', '');
@@ -474,14 +524,28 @@ class OwlMount {
         contentDiv.appendChild(loadingDiv);
         contentDiv.scrollTop = contentDiv.scrollHeight;
 
+        // Smart conversation continuity — new conversation if DocType context changed
+        if (this._should_start_new_conversation()) {
+            this.conversation_id = null;
+            sessionStorage.removeItem('owlai_conversation_id');
+            // Clear chat history for new context
+            const messages = contentDiv.querySelectorAll('.owl-message:not(.system)');
+            messages.forEach(m => m.remove());
+        }
+
         try {
+            const currentRoute = frappe.get_route_str();
             const context = {
-                route: frappe.get_route_str(),
+                route: currentRoute,
                 doctype: window.cur_frm ? window.cur_frm.doctype : null,
                 docname: window.cur_frm ? window.cur_frm.docname : null,
                 form_data: window.cur_frm ? window.cur_frm.doc : null,
                 selected_items: window.cur_list ? window.cur_list.get_checked_items(true) : []
             };
+
+            // Track route for conversation continuity
+            this._last_route = currentRoute;
+            sessionStorage.setItem('owlai_last_route', currentRoute);
 
             const response = await fetch('/api/method/tb_owlai_core.api.router.handle_stream_input', {
                 method: 'POST',
@@ -492,7 +556,7 @@ class OwlMount {
                 body: JSON.stringify({
                     text: text,
                     conversation_id: this.conversation_id,
-                    route: frappe.get_route_str(),
+                    route: currentRoute,
                     context: JSON.stringify(context)
                 })
             });
@@ -515,18 +579,33 @@ class OwlMount {
                 buffer = lines.pop();
 
                 for (const line of lines) {
+                    // Handle error events from SSE
+                    if (line.trim().startsWith('event: error')) continue;
+
                     if (line.trim().startsWith('data: ')) {
                         const dataStr = line.replace('data: ', '').trim();
                         if (dataStr === '[DONE]') break;
 
                         try {
                             const data = JSON.parse(dataStr);
-                            if (data.conversation_id) this.conversation_id = data.conversation_id;
+                            if (data.conversation_id) {
+                                this.conversation_id = data.conversation_id;
+                                sessionStorage.setItem('owlai_conversation_id', data.conversation_id);
+                            }
 
                             if (data.action_data) {
                                 (Array.isArray(data.action_data) ? data.action_data : [data.action_data]).forEach(action => {
+                                    const params = action.parameters || {};
                                     const actionLabel = action.name.charAt(0).toUpperCase() + action.name.slice(1);
-                                    this.append_message('assistant', actionLabel, 'action');
+                                    let detail = '';
+                                    if (action.name === 'navigate' && params.doctype) {
+                                        detail = params.docname
+                                            ? `Opening ${params.doctype}: ${params.docname}`
+                                            : `Opening ${params.doctype} ${params.view || 'List'}`;
+                                    } else if (params.message) {
+                                        detail = params.message;
+                                    }
+                                    this.append_message('assistant', actionLabel, 'action', { detail });
                                     this.handle_action(action);
                                 });
                             }
@@ -551,7 +630,7 @@ class OwlMount {
             }
         } catch (error) {
             loadingDiv.remove();
-            this.append_message('system', 'Error: ' + error.message);
+            this.append_message('system', error.message, 'error');
         }
     }
 

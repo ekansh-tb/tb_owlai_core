@@ -43,3 +43,10 @@ def after_migrate():
         quick_sync()
     except Exception as e:
         frappe.log_error(f"OwlAI bench sync error: {e}", title="OwlAI Migrate")
+
+    # Invalidate dynamic tool cache so it regenerates with fresh metadata
+    try:
+        from tb_owlai_core.intelligence.tool_factory import invalidate_cache
+        invalidate_cache()
+    except Exception:
+        pass

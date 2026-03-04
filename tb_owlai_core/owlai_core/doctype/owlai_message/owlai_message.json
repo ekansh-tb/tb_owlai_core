@@ -11,7 +11,11 @@
         "action_data",
         "timestamp",
         "tool_call_id",
-        "tool_name"
+        "tool_name",
+        "section_break_metrics",
+        "model_used",
+        "tokens_used",
+        "response_time_ms"
     ],
     "fields": [
         {
@@ -61,12 +65,36 @@
             "fieldtype": "Data",
             "label": "Tool Name",
             "hidden": 1
+        },
+        {
+            "fieldname": "section_break_metrics",
+            "fieldtype": "Section Break",
+            "label": "Metrics",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "model_used",
+            "fieldtype": "Data",
+            "label": "Model Used",
+            "hidden": 1
+        },
+        {
+            "fieldname": "tokens_used",
+            "fieldtype": "Int",
+            "label": "Tokens Used",
+            "hidden": 1
+        },
+        {
+            "fieldname": "response_time_ms",
+            "fieldtype": "Int",
+            "label": "Response Time (ms)",
+            "hidden": 1
         }
     ],
     "index_web_pages_for_search": 0,
     "istable": 1,
     "links": [],
-    "modified": "2026-03-04 12:00:00.000000",
+    "modified": "2026-03-05 12:00:00.000000",
     "modified_by": "Administrator",
     "module": "OwlAI Core",
     "name": "OwlAI Message",

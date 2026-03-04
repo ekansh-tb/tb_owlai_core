@@ -17,6 +17,10 @@ from tb_owlai_core.intelligence.bench_introspector import get_bench_map, get_ali
 
 logger = frappe.logger("owlai.tool_factory")
 
+# Redis cache for generated tools
+CACHE_KEY_DYNAMIC_TOOLS = "owlai:dynamic_tools"
+CACHE_TTL = 3600  # 1 hour — refreshed on migrate
+
 
 # ------------------------------------------------------------------
 # Public API
@@ -27,7 +31,16 @@ def generate_dynamic_tools():
 
     Returns dict of {tool_name: tool_config} where tool_config has
     name, description, category, inputSchema, execute (callable).
+    Cached in Redis for 1 hour to avoid regenerating on every request.
     """
+    # Check Redis cache first
+    try:
+        cached = frappe.cache.get_value(CACHE_KEY_DYNAMIC_TOOLS)
+        if cached:
+            return json.loads(cached) if isinstance(cached, str) else cached
+    except Exception:
+        pass
+
     bench_map = get_bench_map()
     if not bench_map:
         logger.warning("No bench_map available — skipping dynamic tool generation")
@@ -59,8 +72,26 @@ def generate_dynamic_tools():
         dt_tools = _generate_tools_for_doctype(dt_name, bench_map)
         tools.update(dt_tools)
 
+    # Cache in Redis
+    try:
+        frappe.cache.set_value(
+            CACHE_KEY_DYNAMIC_TOOLS,
+            json.dumps(tools, default=str),
+            expires_in_sec=CACHE_TTL
+        )
+    except Exception:
+        pass
+
     logger.info(f"Generated {len(tools)} dynamic tools for {len(important_dts)} DocTypes")
     return tools
+
+
+def invalidate_cache():
+    """Clear the dynamic tools cache. Called on after_migrate."""
+    try:
+        frappe.cache.delete_value(CACHE_KEY_DYNAMIC_TOOLS)
+    except Exception:
+        pass
 
 
 def get_relevant_dynamic_tools(user_message, max_tools=4):
@@ -76,7 +107,7 @@ def get_relevant_dynamic_tools(user_message, max_tools=4):
     if not detected_dts:
         return []
 
-    # Load all dynamic tools
+    # Load all dynamic tools (cached)
     all_dynamic = generate_dynamic_tools()
     if not all_dynamic:
         return []

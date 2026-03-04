@@ -64,6 +64,7 @@ class OwlEngine:
     def run(self, message, context=None):
         """Non-streaming agent execution. Returns dict."""
         context = context or OwlContext()
+        start_time = time.time()
 
         # Save user message
         conv_store.save_message(self.conversation, "user", message)
@@ -77,9 +78,34 @@ class OwlEngine:
 
         # Agent loop: LLM -> tool calls -> LLM -> ... -> text
         response = None
+        force_text_next = False  # After text interception or error, force text mode
+        had_tool_error = False
+
         for _round in range(self.max_tool_rounds):
-            response = self.client.chat(messages, tools=tools)
+            # Send tools only if not forced into text mode
+            current_tools = [] if force_text_next else tools
+
+            # If forcing text, inject summarization instruction
+            if force_text_next:
+                messages.append({
+                    "role": "system",
+                    "content": "Summarize the tool results for the user in plain language. Do NOT call tools again. If there was an error, explain what went wrong and what information you need from the user."
+                })
+
+            response = self.client.chat(messages, tools=current_tools)
             _accumulate_usage(usage_total, response.usage)
+
+            # If we forced text mode, we're done — take the response as-is
+            if force_text_next:
+                break
+
+            # Intercept: model may output tool calls as text instead of using API
+            if not response.has_tool_calls and response.content:
+                text_calls = _extract_text_tool_calls(response.content)
+                if text_calls:
+                    response.tool_calls = text_calls
+                    response.content = ""
+                    force_text_next = True  # Next round: no tools, force summary
 
             if not response.has_tool_calls:
                 break
@@ -106,16 +132,35 @@ class OwlEngine:
                 result_str, action = self._execute_tool(tc["name"], tc["arguments"])
                 if action:
                     actions.append(action)
+
+                # Check if tool returned an error — force text summary next round
+                try:
+                    result_obj = json.loads(result_str)
+                    if isinstance(result_obj, dict) and (
+                        not result_obj.get("success", True)
+                        or result_obj.get("error")
+                        or (isinstance(result_obj.get("result"), dict) and result_obj["result"].get("status") == "Incomplete")
+                    ):
+                        had_tool_error = True
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                # Format result for better LLM comprehension
+                formatted_result = _format_tool_result_for_llm(result_str)
                 messages.append(
-                    self.client.format_tool_result_message(tc["id"], result_str)
+                    self.client.format_tool_result_message(tc["id"], formatted_result)
                 )
-                # Persist tool result message
+                # Persist tool result message (original, not formatted)
                 conv_store.save_message(
                     self.conversation, "tool", result_str,
                     message_type="tool_result",
                     tool_call_id=tc["id"],
                     tool_name=tc["name"]
                 )
+
+            # If any tool had an error, force text mode next round
+            if had_tool_error:
+                force_text_next = True
 
         reply = response.content if response else ""
 
@@ -125,13 +170,18 @@ class OwlEngine:
         # Format actions for frontend
         action_data = _format_actions(actions) if actions else None
 
-        # Save assistant response
+        # Save assistant response with metrics
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        model_name = getattr(self.client, 'model', None)
         conv_store.save_message(
             self.conversation,
             "assistant",
             reply,
             message_type="action" if actions else "text",
             action_data={"actions": action_data} if action_data else None,
+            model_used=model_name,
+            tokens_used=usage_total.get("total_tokens"),
+            response_time_ms=elapsed_ms,
         )
 
         return {
@@ -144,6 +194,7 @@ class OwlEngine:
     def run_stream(self, message, context=None):
         """Streaming agent execution. Yields SSE-formatted strings."""
         context = context or OwlContext()
+        start_time = time.time()
 
         # Save user message
         conv_store.save_message(self.conversation, "user", message)
@@ -160,26 +211,65 @@ class OwlEngine:
         model_name = getattr(self.client, 'model', 'unknown')
         yield f"event: start\ndata: {json.dumps({'conversation_id': self.conversation.name, 'model': model_name})}\n\n"
 
+        force_text_next = False  # After text interception or error, force text mode
+        shown_working = False    # Only show "Working on it..." once
+
         try:
             for _round in range(self.max_tool_rounds + 1):
                 content_buffer = ""
+                pending_tokens = []
                 tool_calls = []
+                had_tool_error = False
+
+                # Send tools only if not forced into text mode
+                current_tools = [] if force_text_next else tools
+
+                # If forcing text, inject summarization instruction
+                if force_text_next:
+                    messages.append({
+                        "role": "system",
+                        "content": "Summarize the tool results for the user in plain language. Do NOT call tools again. If there was an error, explain what went wrong and what information you need from the user."
+                    })
 
                 try:
-                    stream_iter = self.client.chat_stream(messages, tools=tools)
+                    stream_iter = self.client.chat_stream(messages, tools=current_tools)
                 except Exception as init_err:
                     yield f"data: {json.dumps({'token': f'[Stream init error: {init_err}]'})}\n\n"
                     break
 
+                # When no tools possible, stream immediately (no buffering needed)
+                buffer_mode = bool(current_tools)
+
                 for chunk in stream_iter:
-                    # Stream text tokens to the client
                     if chunk.get("content"):
                         content_buffer += chunk["content"]
-                        yield f"data: {json.dumps({'token': chunk['content']})}\n\n"
+                        if buffer_mode:
+                            pending_tokens.append(chunk["content"])
+                        else:
+                            # Stream immediately — no tool interception needed
+                            yield f"data: {json.dumps({'token': chunk['content']})}\n\n"
 
                     if chunk.get("done"):
                         tool_calls = chunk.get("tool_calls", [])
                         _accumulate_usage(usage_total, chunk.get("usage", {}))
+
+                # Intercept: model may output tool calls as text
+                if not tool_calls and content_buffer and buffer_mode:
+                    text_calls = _extract_text_tool_calls(content_buffer)
+                    if text_calls:
+                        tool_calls = text_calls
+                        content_buffer = ""
+                        pending_tokens = []
+                        force_text_next = True  # Next round: force text summary
+                        if not shown_working:
+                            yield f"data: {json.dumps({'token': 'Working on it...'})}\n\n"
+                            shown_working = True
+
+                # Flush buffered tokens if no tool calls were detected
+                if not tool_calls and pending_tokens:
+                    for token in pending_tokens:
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+                pending_tokens = []
 
                 if tool_calls:
                     # Tool-calling round — execute and loop
@@ -206,18 +296,37 @@ class OwlEngine:
                         if action:
                             actions.append(action)
                             yield f"data: {json.dumps({'action_data': [{'name': action.get('action', 'navigate'), 'parameters': action}]}, default=str)}\n\n"
+
+                        # Check if tool returned an error
+                        try:
+                            result_obj = json.loads(result_str)
+                            if isinstance(result_obj, dict) and (
+                                not result_obj.get("success", True)
+                                or result_obj.get("error")
+                                or (isinstance(result_obj.get("result"), dict) and result_obj["result"].get("status") == "Incomplete")
+                            ):
+                                had_tool_error = True
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                        # Format result for better LLM comprehension
+                        formatted_result = _format_tool_result_for_llm(result_str)
                         messages.append(
                             self.client.format_tool_result_message(
-                                tc["id"], result_str
+                                tc["id"], formatted_result
                             )
                         )
-                        # Persist tool result message
+                        # Persist tool result message (original)
                         conv_store.save_message(
                             self.conversation, "tool", result_str,
                             message_type="tool_result",
                             tool_call_id=tc["id"],
                             tool_name=tc["name"]
                         )
+
+                    # If any tool errored, force text summary next round
+                    if had_tool_error:
+                        force_text_next = True
                 else:
                     # Final text response — already streamed
                     full_response = content_buffer
@@ -236,8 +345,10 @@ class OwlEngine:
             full_response = error_msg
 
         finally:
-            # Persist assistant response
+            # Persist assistant response with metrics
             try:
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                model_name = getattr(self.client, 'model', None)
                 action_data = _format_actions(actions) if actions else None
                 conv_store.save_message(
                     self.conversation,
@@ -245,6 +356,9 @@ class OwlEngine:
                     full_response,
                     message_type="action" if actions else "text",
                     action_data={"actions": action_data} if action_data else None,
+                    model_used=model_name,
+                    tokens_used=usage_total.get("total_tokens"),
+                    response_time_ms=elapsed_ms,
                 )
                 frappe.db.commit()
             except Exception as e:
@@ -275,7 +389,7 @@ class OwlEngine:
         2. User context (roles, company, defaults)
         3. Viewport context (current route, schema, form data)
         4. Knowledge context (RAG results for the query)
-        5. Tool guidance (enabled tools with hints)
+        5. Tool guidance with dynamic examples
         """
         site = frappe.local.site
 
@@ -302,11 +416,13 @@ class OwlEngine:
         if user_message and context:
             knowledge_ctx = context.get_knowledge_context(user_message)
 
-        # Layer 5: Tool usage guidance
+        # Layer 5: Tool usage guidance with dynamic examples
         tool_guidance = self._build_tool_guidance()
 
-        # Token budget: keep total under ~1500 tokens
-        # domain=200, user=100, viewport=500, knowledge=300, tools=200
+        # Layer 6: Dynamic few-shot examples from detected DocTypes
+        examples = self._build_dynamic_examples(user_message, context)
+
+        # Token budget: keep total under ~2000 tokens
         if len(domain_ctx) > 800:
             domain_ctx = domain_ctx[:800]
         if len(viewport) > 2000:
@@ -314,10 +430,65 @@ class OwlEngine:
         if len(knowledge_ctx) > 1200:
             knowledge_ctx = knowledge_ctx[:1200]
 
-        return f"""You are OwlAI, an intelligent Frappe ERP assistant for site: {site}.
-You MUST call tools to answer questions. Do NOT describe tool usage in text — actually invoke them.
-When asked to count, use list tool with limit_page_length=0. For navigation, use navigate tool.{custom_prompt}{domain_ctx}{user_ctx}{tool_guidance}
+        return f"""You are OwlAI, an intelligent assistant for Frappe site: {site}.
+
+RULES:
+1. ALWAYS use tool calls to answer questions — never describe what you would do, just do it.
+2. If a tool returns an error, STOP calling tools. Explain the error to the user and ask for missing info.
+3. After getting tool results, respond with a natural language summary.
+4. Never retry a failed tool call with the same arguments.{custom_prompt}{domain_ctx}{user_ctx}{tool_guidance}{examples}
 {viewport}{knowledge_ctx}"""
+
+    def _build_dynamic_examples(self, user_message=None, context=None):
+        """Generate contextual few-shot examples from detected DocTypes — zero hardcoding."""
+        examples = []
+
+        # Get a sample DocType from the current context or message
+        sample_dt = None
+        if context and context.doctype:
+            sample_dt = context.doctype
+        elif user_message:
+            try:
+                from tb_owlai_core.intelligence.bench_introspector import detect_doctypes_in_text
+                detected = detect_doctypes_in_text(user_message)
+                if detected:
+                    sample_dt = detected[0]
+            except Exception:
+                pass
+
+        if not sample_dt:
+            # Pick from bench categories dynamically
+            try:
+                from tb_owlai_core.intelligence.bench_introspector import get_bench_map
+                bench_map = get_bench_map()
+                if bench_map:
+                    cats = bench_map.get("domain_categories", {})
+                    # Pick first available from people > transactions > masters
+                    for cat in ("people", "transactions", "masters"):
+                        items = cats.get(cat, [])
+                        if items:
+                            sample_dt = items[0]
+                            break
+            except Exception:
+                pass
+
+        if not sample_dt:
+            return ""
+
+        # Build examples dynamically from the discovered DocType
+        enabled = self._get_enabled_tool_names()
+        lines = ["\nEXAMPLES:"]
+
+        if "list_documents" in enabled:
+            lines.append(f'- To count {sample_dt} records → call list_documents(doctype="{sample_dt}", limit_page_length=0)')
+        if "navigate" in enabled:
+            lines.append(f'- To open {sample_dt} list → call navigate(doctype="{sample_dt}", view="list")')
+        if "create_document" in enabled:
+            lines.append(f'- To create a {sample_dt} → call create_document(doctype="{sample_dt}", data={{...}})')
+
+        lines.append("- If a tool returns missing fields, tell the user which fields are needed — do NOT retry.")
+
+        return "\n".join(lines)
 
     def _build_tool_guidance(self):
         """Generate concise tool guidance from the agent's enabled tools only."""
@@ -599,3 +770,122 @@ def _format_actions(actions):
             "parameters": a,
         })
     return formatted
+
+
+def _extract_text_tool_calls(text):
+    """Extract tool calls that the model wrote as text instead of using the API.
+
+    Local 7B models sometimes output tool calls as text like:
+    - [{"name":"list_documents","arguments":{"doctype":"Employee"}}]
+    - list_documents(doctype="Employee", limit_page_length=0)
+    - [TOOL_CALLS] [{"name":"list_documents",...}]
+
+    Returns list of {"id": str, "name": str, "arguments": dict} or empty list.
+    """
+    import re
+
+    if not text:
+        return []
+
+    # Pattern 1: JSON array of tool calls
+    # Matches: [{"name":"tool_name","arguments":{...}}]
+    json_pattern = r'\[?\s*\{["\']name["\']\s*:\s*["\'](\w+)["\'].*?["\']arguments["\']\s*:\s*(\{[^}]*\})'
+    matches = re.findall(json_pattern, text, re.DOTALL)
+    if matches:
+        calls = []
+        for name, args_str in matches:
+            try:
+                args = json.loads(args_str)
+            except json.JSONDecodeError:
+                args = {}
+            calls.append({
+                "id": f"text_call_{len(calls)}",
+                "name": name,
+                "arguments": args,
+            })
+        return calls
+
+    # Pattern 2: Function-call syntax
+    # Matches: tool_name(arg1="val1", arg2=val2)
+    func_pattern = r'(\w+)\(([^)]+)\)'
+    for match in re.finditer(func_pattern, text):
+        func_name = match.group(1)
+        args_str = match.group(2)
+
+        # Only match known tool names
+        known_tools = {"list_documents", "get_document", "create_document",
+                      "update_document", "delete_document", "search_documents",
+                      "navigate", "get_doctype_info", "frappe_utils"}
+        if func_name not in known_tools:
+            continue
+
+        # Parse keyword arguments
+        args = {}
+        for kv in re.finditer(r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|(\d+)|(\w+))', args_str):
+            key = kv.group(1)
+            val = kv.group(2) or kv.group(3) or kv.group(4) or kv.group(5)
+            if val and val.isdigit():
+                val = int(val)
+            args[key] = val
+
+        if args:
+            return [{
+                "id": f"text_call_0",
+                "name": func_name,
+                "arguments": args,
+            }]
+
+    return []
+
+
+def _format_tool_result_for_llm(result_str):
+    """Format tool results for better LLM comprehension.
+
+    Converts verbose JSON into concise summaries that help the model
+    generate better natural-language responses.
+    """
+    try:
+        result = json.loads(result_str)
+    except (json.JSONDecodeError, TypeError):
+        return result_str
+
+    if not isinstance(result, dict):
+        return result_str
+
+    # Error results — make the error message prominent
+    if not result.get("success", True) or result.get("error"):
+        error = result.get("error", "Unknown error")
+        return f"ERROR: {error}. Tell the user about this error and ask for the missing information."
+
+    inner = result.get("result", result)
+
+    # Incomplete results (missing mandatory fields)
+    if isinstance(inner, dict) and inner.get("status") == "Incomplete":
+        missing = inner.get("missing_fields", [])
+        field_names = [f.get("label", f.get("fieldname", "?")) for f in missing] if isinstance(missing, list) else []
+        msg = inner.get("message", "Missing required fields")
+        return f"INCOMPLETE: {msg}. Missing fields: {', '.join(field_names)}. Ask the user to provide these values."
+
+    # List results — summarize count and preview
+    if isinstance(inner, dict) and "data" in inner:
+        data = inner["data"]
+        count = inner.get("count", len(data) if isinstance(data, list) else 0)
+        doctype = inner.get("doctype", "records")
+        if count == 0:
+            return f"No {doctype} records found."
+        preview = json.dumps(data[:5], default=str) if isinstance(data, list) else str(data)
+        if len(preview) > 1500:
+            preview = preview[:1500] + "..."
+        return f"Found {count} {doctype} record(s). Data: {preview}"
+
+    # Navigation/action results
+    if isinstance(inner, dict) and inner.get("action"):
+        action = inner.get("action")
+        msg = inner.get("message", "")
+        return f"Action: {action}. {msg}"
+
+    # Default: truncate if too long
+    text = json.dumps(result, default=str)
+    if len(text) > 2000:
+        return text[:2000] + "..."
+    return text

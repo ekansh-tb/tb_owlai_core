@@ -37,8 +37,14 @@ def load_or_create(conversation_id=None, user=None):
     return conv
 
 
-def get_history(conversation, limit=None):
-    """Load last N messages as LLM-compatible message dicts."""
+def get_history(conversation, limit=None, include_tool_messages=True):
+    """Load last N messages as LLM-compatible message dicts.
+
+    When include_tool_messages=False, tool_call and tool_result messages are
+    filtered out — useful for keeping context concise on long conversations.
+    The most recent tool exchange (last 4 messages) is always included so the
+    model knows the latest tool state.
+    """
     if not conversation.messages:
         return []
 
@@ -49,10 +55,21 @@ def get_history(conversation, limit=None):
         except Exception:
             limit = 20
 
-    recent = conversation.messages[-limit:] if len(conversation.messages) > limit else conversation.messages
+    all_msgs = conversation.messages
+
+    # Auto-filter tool messages when conversation is long (>2x limit)
+    if len(all_msgs) > limit * 2 and include_tool_messages:
+        include_tool_messages = False
+
+    recent = all_msgs[-limit:] if len(all_msgs) > limit else all_msgs
 
     history = []
-    for msg in recent:
+    for i, msg in enumerate(recent):
+        # Filter tool messages if requested, but keep the last 4 (recent tool exchange)
+        if not include_tool_messages and msg.message_type in ("tool_call", "tool_result"):
+            if i < len(recent) - 4:
+                continue
+
         entry = {"role": msg.role, "content": msg.content or ""}
 
         # Restore tool_calls for assistant messages
@@ -78,7 +95,9 @@ def get_history(conversation, limit=None):
     return history
 
 
-def save_message(conversation, role, content, message_type="text", action_data=None, tool_call_id=None, tool_name=None):
+def save_message(conversation, role, content, message_type="text", action_data=None,
+                  tool_call_id=None, tool_name=None, model_used=None, tokens_used=None,
+                  response_time_ms=None):
     """Append a message to the conversation's child table."""
     if tool_call_id:
         action_data = action_data or {}
@@ -96,6 +115,12 @@ def save_message(conversation, role, content, message_type="text", action_data=N
         row["tool_call_id"] = tool_call_id
     if tool_name:
         row["tool_name"] = tool_name
+    if model_used:
+        row["model_used"] = model_used
+    if tokens_used:
+        row["tokens_used"] = tokens_used
+    if response_time_ms:
+        row["response_time_ms"] = response_time_ms
 
     conversation.append("messages", row)
     conversation.message_count = len(conversation.messages)

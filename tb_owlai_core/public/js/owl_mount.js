@@ -29,15 +29,34 @@ class OwlMount {
             return;
         }
         try {
-            await frappe.require("https://cdn.jsdelivr.net/npm/marked/marked.min.js");
+            await frappe.require("https://cdn.jsdelivr.net/npm/marked@14.0.0/marked.min.js");
             this.markdown_loaded = true;
         } catch (e) {
             console.warn("OwlAI: Could not load marked.js", e);
         }
     }
 
+    _sanitize_html(html) {
+        // Strip dangerous tags/attributes from LLM output before innerHTML
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        // Remove script, iframe, object, embed, form tags
+        const dangerous = div.querySelectorAll('script, iframe, object, embed, form, link, meta, base');
+        dangerous.forEach(el => el.remove());
+        // Remove event handlers from all elements
+        div.querySelectorAll('*').forEach(el => {
+            for (const attr of [...el.attributes]) {
+                if (attr.name.startsWith('on') || attr.name === 'srcdoc' ||
+                    (attr.name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:')) ||
+                    (attr.name === 'src' && attr.value.trim().toLowerCase().startsWith('javascript:'))) {
+                    el.removeAttribute(attr.name);
+                }
+            }
+        });
+        return div.innerHTML;
+    }
+
     init() {
-        console.log("🦉 OwlAI Spotlight: Synced with Frappe Desk core.");
         this.inject_styles();
         this.bind_shortcuts();
         this.mount_navbar_trigger();
@@ -478,7 +497,7 @@ class OwlMount {
             if (role !== 'user' && role !== 'system') {
                 htmlContent = content.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
                 if (this.markdown_loaded && typeof marked !== 'undefined' && htmlContent) {
-                    htmlContent = marked.parse(htmlContent);
+                    htmlContent = this._sanitize_html(marked.parse(htmlContent));
                 }
             } else if (role === 'user') {
                 htmlContent = frappe.utils.xss_clean ? frappe.utils.xss_clean(htmlContent) : htmlContent;
@@ -618,7 +637,7 @@ class OwlMount {
                                     .trim();
 
                                 if (this.markdown_loaded && typeof marked !== 'undefined' && displayUpdate) {
-                                    msgDiv.innerHTML = marked.parse(displayUpdate);
+                                    msgDiv.innerHTML = this._sanitize_html(marked.parse(displayUpdate));
                                 } else {
                                     msgDiv.textContent = displayUpdate || "...";
                                 }

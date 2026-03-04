@@ -1,7 +1,20 @@
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
+import re
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
+
+
+def _validate_order_by(order_by):
+    """Validate order_by to prevent SQL injection. Returns safe value or default."""
+    if not order_by:
+        return "modified desc"
+    # Only allow: word characters (field name) + optional asc/desc
+    # e.g. "modified desc", "creation asc", "name"
+    pattern = r'^[a-zA-Z_][a-zA-Z0-9_.]*(?:\s+(?:asc|desc))?$'
+    if re.match(pattern, order_by.strip(), re.IGNORECASE):
+        return order_by.strip()
+    return "modified desc"
 
 class ListDocumentsSchema(BaseModel):
     doctype: str = Field(..., description="The Frappe DocType name (e.g. 'Employee', 'Sales Order', 'Branch')")
@@ -25,7 +38,7 @@ class ListDocuments(BaseTool):
         fields = arguments.get("fields", ["name", "modified", "modified_by", "owner"])
         limit_start = arguments.get("limit_start", 0)
         limit_page_length = arguments.get("limit_page_length", 20)
-        order_by = arguments.get("order_by", "modified desc")
+        order_by = _validate_order_by(arguments.get("order_by", "modified desc"))
 
         # Permission Check (Read)
         if not frappe.has_permission(doctype, "read"):

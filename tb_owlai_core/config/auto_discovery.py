@@ -71,9 +71,11 @@ def _ensure_provider(provider_name, api_key=None, api_base=None):
         p = frappe.new_doc("OwlAI Provider")
         p.provider_name = provider_name
         p.api_base = api_base
-        if api_key:
-            p.api_key = api_key
         p.insert(ignore_permissions=True)
+        # Store API key securely via Password field after insert
+        if api_key:
+            p.set_password("api_key", api_key)
+            p.save(ignore_permissions=True)
     except frappe.DuplicateEntryError:
         pass
     except Exception as e:

@@ -33,7 +33,6 @@ def load_or_create(conversation_id=None, user=None):
     conv.insert(ignore_permissions=True)
     conv.session_id = conv.name
     conv.save(ignore_permissions=True)
-    frappe.db.commit()
     return conv
 
 
@@ -125,7 +124,6 @@ def save_message(conversation, role, content, message_type="text", action_data=N
     conversation.append("messages", row)
     conversation.message_count = len(conversation.messages)
     conversation.save(ignore_permissions=True)
-    frappe.db.commit()
 
 
 def update_title(conversation, text):
@@ -149,4 +147,3 @@ def update_title(conversation, text):
 
     conversation.title = title
     conversation.save(ignore_permissions=True)
-    frappe.db.commit()

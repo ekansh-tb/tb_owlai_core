@@ -116,7 +116,12 @@ SCHEMA INFORMATION:
         
         if self.form_data:
             context_str += f"\n--- CURRENT FORM DATA ({self.doctype}) ---\n"
-            context_str += json.dumps(self.form_data, indent=2)
+            # Truncate values to prevent prompt injection from large form fields
+            safe_data = {}
+            for k, v in self.form_data.items() if isinstance(self.form_data, dict) else []:
+                str_v = str(v) if v is not None else ""
+                safe_data[k] = str_v[:500] if len(str_v) > 500 else str_v
+            context_str += json.dumps(safe_data, indent=2, default=str)
             context_str += "\n-------------------------------------\n"
             
         if self.selected_items:

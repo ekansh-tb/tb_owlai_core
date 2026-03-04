@@ -16,7 +16,7 @@ import time
 from tb_owlai_core.engine.llm import get_client
 from tb_owlai_core.engine import conversation as conv_store
 from tb_owlai_core.utils.context import OwlContext
-from tb_owlai_core.utils.plugin_manager import PluginManager
+from tb_owlai_core.utils.plugin_manager import PluginManager, get_plugin_manager
 
 logger = frappe.logger("owlai.engine")
 
@@ -27,7 +27,7 @@ class OwlEngine:
     def __init__(self, user=None, conversation_id=None, agent_name=None):
         self.user = user or frappe.session.user
         self.conversation = conv_store.load_or_create(conversation_id, self.user)
-        self.plugin_manager = PluginManager()
+        self.plugin_manager = get_plugin_manager()
         self.max_tool_rounds = 5
 
         # Load agent config
@@ -101,7 +101,8 @@ class OwlEngine:
 
             # Intercept: model may output tool calls as text instead of using API
             if not response.has_tool_calls and response.content:
-                text_calls = _extract_text_tool_calls(response.content)
+                enabled = set(self._get_enabled_tool_names())
+                text_calls = _extract_text_tool_calls(response.content, enabled)
                 if text_calls:
                     response.tool_calls = text_calls
                     response.content = ""
@@ -183,6 +184,7 @@ class OwlEngine:
             tokens_used=usage_total.get("total_tokens"),
             response_time_ms=elapsed_ms,
         )
+        frappe.db.commit()
 
         return {
             "reply": reply,
@@ -215,7 +217,7 @@ class OwlEngine:
         shown_working = False    # Only show "Working on it..." once
 
         try:
-            for _round in range(self.max_tool_rounds + 1):
+            for _round in range(self.max_tool_rounds):
                 content_buffer = ""
                 pending_tokens = []
                 tool_calls = []
@@ -255,7 +257,8 @@ class OwlEngine:
 
                 # Intercept: model may output tool calls as text
                 if not tool_calls and content_buffer and buffer_mode:
-                    text_calls = _extract_text_tool_calls(content_buffer)
+                    enabled = set(self._get_enabled_tool_names())
+                    text_calls = _extract_text_tool_calls(content_buffer, enabled)
                     if text_calls:
                         tool_calls = text_calls
                         content_buffer = ""
@@ -772,13 +775,19 @@ def _format_actions(actions):
     return formatted
 
 
-def _extract_text_tool_calls(text):
+def _extract_text_tool_calls(text, enabled_tools=None):
     """Extract tool calls that the model wrote as text instead of using the API.
 
     Local 7B models sometimes output tool calls as text like:
     - [{"name":"list_documents","arguments":{"doctype":"Employee"}}]
     - list_documents(doctype="Employee", limit_page_length=0)
     - [TOOL_CALLS] [{"name":"list_documents",...}]
+
+    Args:
+        text: The model's text output to scan.
+        enabled_tools: Set of tool names this agent is allowed to use.
+            Only tools in this set will be extracted. Security: prevents
+            text-format tool calls from bypassing the agent's tool allowlist.
 
     Returns list of {"id": str, "name": str, "arguments": dict} or empty list.
     """
@@ -787,6 +796,13 @@ def _extract_text_tool_calls(text):
     if not text:
         return []
 
+    known_tools = {"list_documents", "get_document", "create_document",
+                  "update_document", "delete_document", "search_documents",
+                  "navigate", "get_doctype_info", "frappe_utils"}
+
+    # Intersect with enabled tools if provided — security gate
+    allowed = known_tools & enabled_tools if enabled_tools else known_tools
+
     # Pattern 1: JSON array of tool calls
     # Matches: [{"name":"tool_name","arguments":{...}}]
     json_pattern = r'\[?\s*\{["\']name["\']\s*:\s*["\'](\w+)["\'].*?["\']arguments["\']\s*:\s*(\{[^}]*\})'
@@ -794,6 +810,8 @@ def _extract_text_tool_calls(text):
     if matches:
         calls = []
         for name, args_str in matches:
+            if name not in allowed:
+                continue
             try:
                 args = json.loads(args_str)
             except json.JSONDecodeError:
@@ -812,11 +830,7 @@ def _extract_text_tool_calls(text):
         func_name = match.group(1)
         args_str = match.group(2)
 
-        # Only match known tool names
-        known_tools = {"list_documents", "get_document", "create_document",
-                      "update_document", "delete_document", "search_documents",
-                      "navigate", "get_doctype_info", "frappe_utils"}
-        if func_name not in known_tools:
+        if func_name not in allowed:
             continue
 
         # Parse keyword arguments

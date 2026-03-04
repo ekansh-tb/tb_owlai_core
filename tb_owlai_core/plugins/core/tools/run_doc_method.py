@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
+import re
 import frappe
 from tb_owlai_core.plugins.base import BaseTool
 
@@ -23,6 +24,11 @@ class RunDocMethod(BaseTool):
         doctype = arguments.get("doctype")
         name = arguments.get("name")
         method = arguments.get("method")
+        # Validate method name — alphanumeric + underscores only, no dots or dunder
+        if not method or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', method):
+            return {"error": f"Invalid method name: '{method}'"}
+        if method.startswith('__') or method.startswith('_'):
+            return {"error": f"Private/protected methods cannot be called: '{method}'"}
         args = arguments.get("args") or {}
 
         if not frappe.db.exists(doctype, name):
@@ -57,6 +63,9 @@ class RunDocMethod(BaseTool):
                  )
                  if not is_whitelisted:
                      return {"error": f"Method '{method}' is not a whitelisted method on {doctype}. Only submit, cancel, and @frappe.whitelist() methods are allowed."}
+                 # Validate all arg keys are simple strings
+                 if args and not all(isinstance(k, str) and re.match(r'^[a-zA-Z_]\w*$', k) for k in args.keys()):
+                     return {"error": "Invalid argument keys"}
                  result = func(**args)
                  return {"status": "success", "result": result, "docstatus": doc.docstatus}
             

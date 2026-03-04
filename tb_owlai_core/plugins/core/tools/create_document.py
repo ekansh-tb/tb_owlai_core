@@ -30,6 +30,10 @@ class CreateDocument(BaseTool):
         if not frappe.db.exists("DocType", doctype):
             return {"error": f"DocType '{doctype}' does not exist."}
 
+        # Permission check FIRST — before loading metadata
+        if not frappe.has_permission(doctype, "create"):
+            return {"error": f"You do not have permission to create '{doctype}'."}
+
         try:
             meta = frappe.get_meta(doctype)
             valid_fields = {f.fieldname for f in meta.fields}
@@ -111,10 +115,6 @@ class CreateDocument(BaseTool):
         except Exception as e:
             frappe.log_error(f"Metadata Fetch Error: {str(e)}")
             # Fallback to direct creation if meta fails (rare)
-
-        # Permission Check
-        if not frappe.has_permission(doctype, "create"):
-             return {"error": f"You do not have permission to create '{doctype}'."}
 
         try:
             doc = frappe.new_doc(doctype)

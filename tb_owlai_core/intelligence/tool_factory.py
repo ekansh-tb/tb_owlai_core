@@ -10,12 +10,25 @@ The factory reads the bench_map from Redis (built by bench_introspector)
 and generates lightweight tool wrappers around the core CRUD operations.
 """
 
+import re
 import frappe
 import json
 
 from tb_owlai_core.intelligence.bench_introspector import get_bench_map, get_alias_map
 
 logger = frappe.logger("owlai.tool_factory")
+
+
+def _validate_order_by(order_by):
+    """Validate order_by to prevent SQL injection. Returns safe value or default."""
+    if not order_by:
+        return "modified desc"
+    # Only allow: word characters (field name) + optional asc/desc
+    # e.g. "modified desc", "creation asc", "name"
+    pattern = r'^[a-zA-Z_][a-zA-Z0-9_.]*(?:\s+(?:asc|desc))?$'
+    if re.match(pattern, order_by.strip(), re.IGNORECASE):
+        return order_by.strip()
+    return "modified desc"
 
 # Redis cache for generated tools
 CACHE_KEY_DYNAMIC_TOOLS = "owlai:dynamic_tools"
@@ -272,7 +285,7 @@ def _exec_list(dt_name, args):
     filters = args.get("filters", {})
     fields = args.get("fields", ["name"])
     limit = args.get("limit_page_length", 20)
-    order_by = args.get("order_by", "creation desc")
+    order_by = _validate_order_by(args.get("order_by", "creation desc"))
 
     # If limit is 0, return count
     if limit == 0:
@@ -295,7 +308,6 @@ def _exec_list(dt_name, args):
         "doctype": dt_name,
         "data": results,
         "count": len(results),
-        "total": frappe.db.count(dt_name, filters=filters),
     }
 
 
@@ -309,7 +321,19 @@ def _exec_get(dt_name, args):
         return {"error": f"No permission to read {dt_name} {name}"}
 
     doc = frappe.get_doc(dt_name, name)
-    return {"doctype": dt_name, "data": doc.as_dict()}
+    d = doc.as_dict()
+    # Redact sensitive fields before sending to LLM
+    _SENSITIVE_FIELDS = {"password", "api_key", "api_secret", "secret", "token",
+                         "new_password", "reset_password_key", "auth_token",
+                         "session_key", "api_token"}
+    try:
+        meta = frappe.get_meta(dt_name)
+        password_fields = {f.fieldname for f in meta.fields if f.fieldtype == "Password"}
+        redact = _SENSITIVE_FIELDS | password_fields
+    except Exception:
+        redact = _SENSITIVE_FIELDS
+    safe_data = {k: "[REDACTED]" if k in redact else v for k, v in d.items()}
+    return {"doctype": dt_name, "data": safe_data}
 
 
 def _exec_create(dt_name, args):

@@ -29,26 +29,23 @@ class FrappeCRUDTool(BaseTool):
         name = arguments.get("name")
         limit = arguments.get("limit_page_length", 20)
 
-        # Security Check: Ideally restrict sensitive doctypes
-        # For now, we assume Agent is Admin or System Manager context
-        
         try:
             if action == "get_list":
                 return {"result": frappe.get_list(doctype, filters=filters, fields=fields, limit_page_length=limit)}
-            
+
             elif action == "get_doc":
                 if not name and not filters:
                     return {"error": "Name or filters required for get_doc"}
                 return {"result": frappe.get_doc(doctype, name if name else filters).as_dict()}
-            
+
             elif action == "insert":
                 if not doc_data:
                     return {"error": "Document data required for insert"}
                 doc_data["doctype"] = doctype
                 d = frappe.get_doc(doc_data)
-                d.insert(ignore_permissions=True)
+                d.insert()
                 return {"result": d.as_dict()}
-            
+
             elif action == "update":
                 if not name:
                     return {"error": "Name required for update"}
@@ -56,13 +53,13 @@ class FrappeCRUDTool(BaseTool):
                     return {"error": "Data to update required"}
                 d = frappe.get_doc(doctype, name)
                 d.update(doc_data)
-                d.save(ignore_permissions=True)
+                d.save()
                 return {"result": d.as_dict()}
-                
+
             elif action == "delete":
                 if not name:
                     return {"error": "Name required for delete"}
-                frappe.delete_doc(doctype, name, ignore_permissions=True)
+                frappe.delete_doc(doctype, name)
                 return {"result": "Deleted"}
             
             elif action == "get_meta":

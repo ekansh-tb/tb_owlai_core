@@ -50,7 +50,8 @@ class GetDoctypeInfo(BaseTool):
                                         "reqd": cdf.reqd
                                     })
                             field_info["child_schema"] = child_fields[:15] # Limit child fields
-                        except: pass
+                        except Exception:
+                            pass
                         
                     fields_data.append(field_info)
             

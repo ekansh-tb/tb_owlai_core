@@ -60,7 +60,8 @@ class OwlContext:
                 try:
                      dt = frappe.db.get_value("DocType", {"name": ["like", doctype_slug]}, "name")
                      if dt: self.doctype = dt
-                except: pass
+                except Exception:
+                    pass
         
         # Extract DocName if available (doctype/docname)
         if self.doctype and len(parts) >= 2:

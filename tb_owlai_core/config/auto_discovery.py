@@ -1,202 +1,150 @@
-
 import frappe
 import os
+import requests
+
 from tb_owlai_core.tool_registry import ToolRegistry
+
 
 def discover_and_register_providers():
     """
-    Scans environment for known API keys and registers them.
+    Scans environment for known API keys and Ollama, registers providers/models.
     Also syncs tools and ensures a default agent exists.
+    Zero hardcoded model names — discovers from Ollama API or uses provider defaults.
     """
-    
-    # 0. Sync Tools from Plugins (Force discovery)
+
+    # 0. Sync Tools from Plugins
     try:
         ToolRegistry()._sync_tools()
     except Exception as e:
         frappe.log_error(f"Tool Sync during Discovery failed: {e}")
 
-    # 1. Groq
-    if os.getenv("GROQ_API_KEY"):
-        _ensure_provider_and_model(
-            provider_name="Groq",
-            model_name="llama3-70b-8192",
-            api_key=os.getenv("GROQ_API_KEY")
-        )
+    default_model_link = None
 
-    # ... (Rest of existing provider logic matches original file, omitting for brevity in diff if not changing) ...
-    # Wait, replace_file_content replaces the BLOCK. I need to be careful not to delete sections if I use a large range.
-    # The user wants me to INSERT logic.
-    
-    # 2. Anthropic
-    if os.getenv("ANTHROPIC_API_KEY"):
-        _ensure_provider_and_model(
-            provider_name="Anthropic",
-            model_name="claude-3-5-sonnet-20240620",
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-        
-    # 3. OpenAI
-    if os.getenv("OPENAI_API_KEY"):
-        _ensure_provider_and_model(
-            provider_name="OpenAI",
-            model_name="gpt-4o",
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+    # 1. Ollama (Local — zero-config primary)
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        resp = requests.get(f"{ollama_host}/api/tags", timeout=3)
+        if resp.ok:
+            _ensure_provider("Ollama", api_base=ollama_host)
+            models = resp.json().get("models", [])
+            for m in models:
+                model_name = m.get("name", "")
+                if model_name:
+                    link = _ensure_model(model_name, "Ollama")
+                    if not default_model_link:
+                        default_model_link = link
+    except Exception:
+        pass
 
-    # 4. OpenRouter
-    if os.getenv("OPEN_ROUTER_API_KEY"):
-        _ensure_provider_and_model(
-            provider_name="OpenRouter",
-            model_name="google/gemini-2.0-flash-001",
-            api_key=os.getenv("OPEN_ROUTER_API_KEY"),
-            api_base="https://openrouter.ai/api/v1"
-        )
-        
-    # 5. Ollama (Local) - Default for CPU/Cloud
-    local_model = "llama3.2:3b"
-    _ensure_provider_and_model(
-        provider_name="Ollama",
-        model_name=local_model,
-        api_base=os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    )
-    
-    # 6. Create Default Agent
-    _ensure_default_agent(local_model)
+    # 2. Cloud providers (optional fallbacks via env vars)
+    env_providers = [
+        ("GROQ_API_KEY", "Groq", None),
+        ("ANTHROPIC_API_KEY", "Anthropic", None),
+        ("OPENAI_API_KEY", "OpenAI", None),
+        ("OPEN_ROUTER_API_KEY", "OpenRouter", "https://openrouter.ai/api/v1"),
+    ]
 
-    # 7. Seed Knowledge Base with Business context
+    for env_key, provider_name, api_base in env_providers:
+        api_key = os.getenv(env_key)
+        if api_key:
+            _ensure_provider(provider_name, api_key=api_key, api_base=api_base)
+
+    # 3. Create Default Agent
+    _ensure_default_agent(default_model_link)
+
+    # 4. Seed Knowledge Base with Business context (optional)
     try:
         from tb_owlai_core.agno_integrations.auto_seed import seed_knowledge_base
         seed_knowledge_base()
+    except ImportError:
+        frappe.logger("owlai").info("KB seeding skipped: optional dependencies not installed")
     except Exception as e:
         frappe.log_error(f"KB Auto-Seeding during Discovery failed: {e}")
 
 
+def _ensure_provider(provider_name, api_key=None, api_base=None):
+    """Create provider if it doesn't exist."""
+    if frappe.db.exists("OwlAI Provider", provider_name):
+        return
 
-def _ensure_provider_and_model(provider_name, model_name, api_key=None, api_base=None):
     try:
-        # Create/Update Provider
-        provider_doc_name = provider_name
-        if not frappe.db.exists("OwlAI Provider", provider_doc_name):
-            try:
-                p = frappe.new_doc("OwlAI Provider")
-                p.provider_name = provider_name
-                p.api_base = api_base
-                if api_key:
-                    p.api_key = api_key 
-                p.insert(ignore_permissions=True)
-            except frappe.DuplicateEntryError:
-                pass
-        
-        # Ensure Model
-        # We try to guess the name, but best is to query by fields
-        if not frappe.db.get_value("OwlAI Model", {"model_name": model_name, "provider": provider_doc_name}):
-            try:
-                m = frappe.new_doc("OwlAI Model")
-                m.model_name = model_name
-                m.provider = provider_doc_name
-                m.insert(ignore_permissions=True)
-            except frappe.DuplicateEntryError:
-                pass
-            
+        p = frappe.new_doc("OwlAI Provider")
+        p.provider_name = provider_name
+        p.api_base = api_base
+        if api_key:
+            p.api_key = api_key
+        p.insert(ignore_permissions=True)
+    except frappe.DuplicateEntryError:
+        pass
     except Exception as e:
         frappe.log_error(title=f"Discovery Error: {provider_name}", message=str(e))
 
 
+def _ensure_model(model_name, provider_name):
+    """Create model if it doesn't exist. Returns the model link name."""
+    existing = frappe.db.get_value(
+        "OwlAI Model", {"model_name": model_name, "provider": provider_name}, "name"
+    )
+    if existing:
+        return existing
 
-def _ensure_default_agent(default_model_name):
-    """Creates default 'Owl Assistant' and Swarm Agents if they don't exist."""
-    
-    # 1. Base Model Check
-    model_link = f"{default_model_name} (Ollama)"
-    # If using API keys, we might want a stronger model for coder.
-    # For now, stay Zero-Config CPU friendly (Llama 3.2 3B is okay for basic coding, 
-    # but 70b Groq would be better if available. Let's start with default.)
-    
-    if not frappe.db.exists("OwlAI Model", model_link):
+    try:
+        m = frappe.new_doc("OwlAI Model")
+        m.model_name = model_name
+        m.provider = provider_name
+        m.insert(ignore_permissions=True)
+        return m.name
+    except frappe.DuplicateEntryError:
+        return frappe.db.get_value(
+            "OwlAI Model", {"model_name": model_name, "provider": provider_name}, "name"
+        )
+    except Exception as e:
+        frappe.log_error(title=f"Model Discovery Error: {model_name}", message=str(e))
+        return None
+
+
+def _ensure_default_agent(default_model_link=None):
+    """Creates default 'Owl Assistant' agent if it doesn't exist."""
+    agent_name = "Owl Assistant"
+
+    if frappe.db.exists("OwlAI Agent", agent_name):
         return
 
-    # --- Agent Definitions ---
-    agents_config = [
-        {
-            "name": "Owl Assistant",
-            "role": "Orchestrator",
-            "prompt": (
-                "You are OwlAI, the Orchestrator for this Frappe system. "
-                "You coordinate tasks between specialized agents. "
-                "For coding, delegate to 'frappe_coder'. "
-                "For admin tasks, delegate to 'frappe_admin'. "
-                "For analysis, delegate to 'frappe_analyst'. "
-                "Always be helpful and concise."
-            ),
-            "tools": ["delegate_task", "frappe_utils"] # Minimal tools, relies on delegation
-        },
-        {
-            "name": "frappe_coder", 
-            "role": "Engineer",
-            "prompt": (
-                "You are frappe_coder, an expert Frappe/Python/JS developer. "
-                "You write high-quality, secure code. "
-                "Always verify file paths and existing code before editing. "
-                "Use 'create_document' for DocTypes and 'write_to_file' (if available) for code."
-            ),
-            "tools": ["frappe_utils", "get_doctype_info", "list_documents", "create_document", "update_document"] 
-        },
-        {
-            "name": "frappe_admin",
-            "role": "Admin",
-            "prompt": (
-                "You are frappe_admin, responsible for system operations. "
-                "You manage users, permissions, and site settings. "
-                "Be careful with deletion/update operations."
-            ),
-            "tools": ["frappe_utils", "list_documents", "get_document", "update_document", "search_documents"]
-        },
-         {
-            "name": "frappe_analyst",
-            "role": "Analyst",
-            "prompt": (
-                "You are frappe_analyst. You analyze data and generate reports. "
-                "Use SQL and Report tools to find insights."
-            ),
-            "tools": ["run_doc_method", "generate_report", "list_documents"] # Assuming generate_report exists or will
-        }
-    ]
-
-    for agent_conf in agents_config:
-        _create_agent_if_missing(agent_conf, model_link)
-
-    # Set Default Global
-    settings = frappe.get_single("OwlAI Settings")
-    if not settings.default_agent:
-        settings.default_agent = "Owl Assistant"
-        settings.default_model = model_link
-        settings.save(ignore_permissions=True)
-
-
-def _create_agent_if_missing(config, model_link):
-    name = config["name"]
-    if frappe.db.exists("OwlAI Agent", name):
-        return
+    if not default_model_link:
+        default_model_link = frappe.db.get_value("OwlAI Model", {}, "name")
+        if not default_model_link:
+            return
 
     try:
         agent = frappe.new_doc("OwlAI Agent")
-        agent.agent_name = name
-        agent.model = model_link
-        agent.system_prompt = config["prompt"]
-        
-        # Tools
-        for t_name in config["tools"]:
-            # Check if tool exists in DB
-            if frappe.db.exists("OwlAI Tool", {"tool_name": t_name}):
-                agent.append("tools", {"tool": t_name, "enabled": 1})
-            else:
-                # If delegate_task wasn't synced yet, we might miss it.
-                # It's fine, next sync will pick it up or user can add it.
-                pass
-            
-        agent.insert(ignore_permissions=True)
-        frappe.logger("owlai").info(f"Created Agent: {name}")
-        
-    except Exception as e:
-        frappe.log_error(f"Failed to create Agent {name}: {e}")
+        agent.agent_name = agent_name
+        agent.model = default_model_link
+        agent.system_prompt = (
+            "You are OwlAI, an intelligent assistant for this Frappe system. "
+            "You help users navigate, create, read, update, and manage documents. "
+            "You operate within the user's permissions — never escalate privileges. "
+            "Always be helpful, concise, and action-oriented."
+        )
 
+        # Add available tools
+        for tool_name in ["get_doctype_info", "list_documents", "get_document",
+                          "create_document", "update_document", "delete_document",
+                          "search_documents", "navigate", "frappe_utils"]:
+            if frappe.db.exists("OwlAI Tool", {"tool_name": tool_name}):
+                agent.append("tools", {"tool": tool_name, "enabled": 1})
+
+        agent.insert(ignore_permissions=True)
+        frappe.logger("owlai").info(f"Created Agent: {agent_name}")
+    except Exception as e:
+        frappe.log_error(f"Failed to create Agent {agent_name}: {e}")
+
+    # Set as default in Settings
+    try:
+        settings = frappe.get_single("OwlAI Settings")
+        if not settings.default_agent:
+            settings.default_agent = agent_name
+            if default_model_link:
+                settings.default_model = default_model_link
+            settings.save(ignore_permissions=True)
+    except Exception:
+        pass

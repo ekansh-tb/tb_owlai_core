@@ -8,25 +8,21 @@
         "general_section",
         "enabled",
         "enable_analytics",
-        "provider",
-        "gemini_section",
-        "gemini_api_key",
-        "gemini_model",
-        "local_llm_section",
-        "enable_local_llm",
-        "ollama_url",
-        "ollama_model",
+        "default_model",
+        "default_agent",
         "agent_section",
         "max_agent_loops",
+        "default_temperature",
+        "context_limit",
+        "default_system_prompt",
+        "caching_section",
         "enable_caching",
         "cache_ttl",
-        "vision_model",
-        "default_temperature",
-        "default_system_prompt",
-        "context_limit",
-        "enable_memory",
-        "enable_compression",
-        "agentic_reasoning"
+        "rate_limit_section",
+        "rate_limit_per_minute",
+        "knowledge_section",
+        "embedding_model",
+        "vision_model"
     ],
     "fields": [
         {
@@ -53,10 +49,10 @@
             "options": "OwlAI Model"
         },
         {
-            "default": "nomic-embed-text",
-            "fieldname": "embedding_model",
-            "fieldtype": "Data",
-            "label": "Embedding Model (Ollama)"
+            "fieldname": "default_agent",
+            "fieldtype": "Link",
+            "label": "Default Agent",
+            "options": "OwlAI Agent"
         },
         {
             "fieldname": "agent_section",
@@ -68,6 +64,28 @@
             "fieldname": "max_agent_loops",
             "fieldtype": "Int",
             "label": "Max Reasoning Loops"
+        },
+        {
+            "default": "0.7",
+            "fieldname": "default_temperature",
+            "fieldtype": "Float",
+            "label": "Default Temperature"
+        },
+        {
+            "default": "12000",
+            "fieldname": "context_limit",
+            "fieldtype": "Int",
+            "label": "Context Limit (tokens)"
+        },
+        {
+            "fieldname": "default_system_prompt",
+            "fieldtype": "Small Text",
+            "label": "Default System Prompt"
+        },
+        {
+            "fieldname": "caching_section",
+            "fieldtype": "Section Break",
+            "label": "Caching"
         },
         {
             "default": "1",
@@ -82,51 +100,33 @@
             "label": "Cache TTL (Seconds)"
         },
         {
+            "fieldname": "rate_limit_section",
+            "fieldtype": "Section Break",
+            "label": "Rate Limiting"
+        },
+        {
+            "default": "30",
+            "fieldname": "rate_limit_per_minute",
+            "fieldtype": "Int",
+            "label": "Requests Per Minute (per user)",
+            "description": "Maximum chat requests per user per minute. 0 = unlimited."
+        },
+        {
+            "fieldname": "knowledge_section",
+            "fieldtype": "Section Break",
+            "label": "Knowledge (Optional)"
+        },
+        {
+            "default": "nomic-embed-text",
+            "fieldname": "embedding_model",
+            "fieldtype": "Data",
+            "label": "Embedding Model (Ollama)"
+        },
+        {
             "fieldname": "vision_model",
             "fieldtype": "Link",
-            "label": "Vision Model (Local)",
+            "label": "Vision Model",
             "options": "OwlAI Model"
-        },
-        {
-            "default": "0.7",
-            "fieldname": "default_temperature",
-            "fieldtype": "Float",
-            "label": "Default Temperature"
-        },
-        {
-            "fieldname": "default_system_prompt",
-            "fieldtype": "Small Text",
-            "label": "Default System Prompt"
-        },
-        {
-            "default": "12000",
-            "fieldname": "context_limit",
-            "fieldtype": "Int",
-            "label": "Context Limit"
-        },
-        {
-            "default": "1",
-            "fieldname": "enable_memory",
-            "fieldtype": "Check",
-            "label": "Enable Memory"
-        },
-        {
-            "default": "1",
-            "fieldname": "enable_compression",
-            "fieldtype": "Check",
-            "label": "Enable Compression"
-        },
-        {
-            "default": "1",
-            "fieldname": "agentic_reasoning",
-            "fieldtype": "Check",
-            "label": "Agentic Reasoning"
-        },
-        {
-            "fieldname": "default_agent",
-            "fieldtype": "Link",
-            "label": "Default Agent",
-            "options": "OwlAI Agent"
         }
     ],
     "issingle": 1,

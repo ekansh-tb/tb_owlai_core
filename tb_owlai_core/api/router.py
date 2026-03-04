@@ -15,6 +15,32 @@ from tb_owlai_core.engine import conversation as conv_store
 
 
 # ---------------------------------------------------------------------------
+# Rate Limiting
+# ---------------------------------------------------------------------------
+
+def _check_rate_limit(user):
+    """Enforce per-user rate limiting. Raises if limit exceeded."""
+    try:
+        settings = frappe.get_single("OwlAI Settings")
+        limit = getattr(settings, "rate_limit_per_minute", 0) or 0
+        if limit <= 0:
+            return
+    except Exception:
+        return
+
+    cache_key = f"owlai:rate:{user}"
+    count = frappe.cache().get_value(cache_key) or 0
+
+    if count >= limit:
+        frappe.throw(
+            f"Rate limit exceeded ({limit} requests/minute). Please wait and try again.",
+            title="Rate Limit",
+        )
+
+    frappe.cache().set_value(cache_key, count + 1, expires_in_sec=60)
+
+
+# ---------------------------------------------------------------------------
 # Analytics logging
 # ---------------------------------------------------------------------------
 
@@ -42,7 +68,6 @@ def _log_analytics(user, model_id, response_time, usage, status, tool_calls,
             "error_message": error_message,
         })
         doc.insert(ignore_permissions=True)
-        frappe.db.commit()
     except Exception as e:
         frappe.logger("owlai").error(f"Analytics logging failed: {e}")
 
@@ -85,6 +110,7 @@ def _parse_context(route, context_str):
 def handle_stream_input(route=None, text=None, conversation_id=None, context=None, mode=None):
     """Streaming chat handler (SSE). Primary endpoint for the frontend."""
     user = frappe.session.user
+    _check_rate_limit(user)
 
     try:
         agent_context = _parse_context(route, context)
@@ -160,6 +186,7 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
 def handle_input_v2(route=None, text=None, conversation_id=None, context=None, mode=None):
     """Non-streaming chat handler. Returns JSON dict."""
     user = frappe.session.user
+    _check_rate_limit(user)
 
     agent_context = _parse_context(route, context)
 
@@ -352,13 +379,14 @@ def update_owlai_settings(model=None, enable_analytics=None, **kwargs):
         settings.enable_analytics = int(enable_analytics)
 
     settings.save(ignore_permissions=True)
-    frappe.db.commit()
     return {"status": "success"}
 
 
 @frappe.whitelist()
 def clear_owlai_cache():
-    """Clear the OwlAI Redis cache."""
+    """Clear the OwlAI Redis cache. System Manager only."""
+    frappe.only_for("System Manager")
+
     from tb_owlai_core.utils.cache import OwlCache
 
     OwlCache.clear()

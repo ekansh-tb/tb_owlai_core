@@ -40,3 +40,5 @@ tb_owlai_core/public/owlnest/assets/*
 .omc/*
 .omc/
 OwlNest/yarn.lock
+OwlNest/package-lock.json
+tb_owlai_core/intelligence/bench_introspector.py

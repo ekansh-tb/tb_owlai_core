@@ -8,7 +8,8 @@ class OwlContext:
         self.selected_items = selected_items or []
         self.doctype = doctype
         self.docname = docname
-        
+        self._bench_map = None
+
         if not self.doctype or not self.docname:
             self._parse_route(route)
 
@@ -132,7 +133,101 @@ SCHEMA INFORMATION:
         full_context = f"Current Route: {self.route}\n"
         if self.docname:
             full_context += f"Current Document: {self.docname}\n"
-            
+
         full_context += self.get_schema_context_string()
         full_context += self.get_data_context_string()
         return full_context
+
+    # ------------------------------------------------------------------
+    # v2 Context Layers (used by OwlEngine._build_system_prompt)
+    # ------------------------------------------------------------------
+
+    def get_domain_context(self):
+        """Layer 1: Business domain context from bench introspection.
+        Cached in Redis, ~0ms to retrieve.
+        """
+        try:
+            from tb_owlai_core.intelligence.bench_introspector import get_bench_map
+            bench_map = get_bench_map()
+            if not bench_map:
+                return ""
+
+            domain = bench_map.get("business_domain", "General Business")
+            apps = bench_map.get("installed_apps", [])
+            # Filter out framework apps for cleaner context
+            business_apps = [a for a in apps if a not in ("frappe",)]
+
+            modules = bench_map.get("modules", {})
+            # Top modules by DocType count
+            top_modules = sorted(
+                [(mod, len(info.get("doctypes", []))) for mod, info in modules.items()],
+                key=lambda x: x[1], reverse=True
+            )[:8]
+
+            categories = bench_map.get("domain_categories", {})
+            people = categories.get("people", [])[:5]
+            transactions = categories.get("transactions", [])[:8]
+            masters = categories.get("masters", [])[:5]
+
+            lines = [f"\nBUSINESS DOMAIN: {domain}"]
+            lines.append(f"Apps: {', '.join(business_apps)}")
+            if top_modules:
+                lines.append(f"Key modules: {', '.join(f'{m}({c})' for m, c in top_modules)}")
+            if people:
+                lines.append(f"People: {', '.join(people)}")
+            if transactions:
+                lines.append(f"Transactions: {', '.join(transactions)}")
+            if masters:
+                lines.append(f"Masters: {', '.join(masters)}")
+
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def get_user_context(self):
+        """Layer 2: Current user's role and defaults context."""
+        try:
+            user = frappe.session.user
+            user_doc = frappe.get_doc("User", user)
+            full_name = user_doc.full_name or user
+            roles = [r.role for r in user_doc.roles if r.role not in ("All", "Guest")][:8]
+            company = frappe.defaults.get_user_default("Company") or ""
+
+            lines = [f"\nUSER: {full_name}"]
+            if company:
+                lines.append(f"Company: {company}")
+            if roles:
+                lines.append(f"Roles: {', '.join(roles)}")
+
+            # User defaults
+            defaults = {}
+            for key in ("warehouse", "cost_center", "department"):
+                val = frappe.defaults.get_user_default(key)
+                if val:
+                    defaults[key] = val
+            if defaults:
+                lines.append(f"Defaults: {', '.join(f'{k}={v}' for k, v in defaults.items())}")
+
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def get_knowledge_context(self, query):
+        """Layer 4: Knowledge base context from RAG search."""
+        try:
+            from tb_owlai_core.intelligence.rag_engine import search
+            results = search(query, limit=3)
+            if not results:
+                return ""
+
+            lines = ["\nKNOWLEDGE BASE:"]
+            for r in results:
+                if r.get("score", 0) < 0.3:
+                    continue
+                content = r.get("content", "")[:300]
+                title = r.get("meta", {}).get("title", "")
+                lines.append(f"- [{title}] {content}")
+
+            return "\n".join(lines) if len(lines) > 1 else ""
+        except Exception:
+            return ""

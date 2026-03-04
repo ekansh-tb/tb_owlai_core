@@ -6,9 +6,19 @@ from frappe.model.document import Document
 
 
 def _get_indexer():
-    """Lazy-load the knowledge indexer. Returns (index_document, delete_from_index) or raises ImportError."""
-    from tb_owlai_core.agno_integrations.knowledge_index import index_document, delete_from_index
-    return index_document, delete_from_index
+    """Lazy-load the knowledge indexer.
+
+    Prefers the lightweight RAG engine (Redis + Ollama embed).
+    Falls back to agno integration if rag_engine is unavailable.
+    Returns (index_document, delete_from_index).
+    """
+    try:
+        from tb_owlai_core.intelligence.rag_engine import index_document, delete_from_index
+        return index_document, delete_from_index
+    except ImportError:
+        # Fallback to agno integration
+        from tb_owlai_core.agno_integrations.knowledge_index import index_document, delete_from_index
+        return index_document, delete_from_index
 
 class OwlAIKnowledgeBase(Document):
     def validate(self):

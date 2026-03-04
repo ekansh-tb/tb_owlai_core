@@ -263,23 +263,21 @@ class OwlEngine:
         before this method is called, so get_history() already includes it.
         We do NOT append it again to avoid duplication.
         """
-        messages = [{"role": "system", "content": self._build_system_prompt(context)}]
+        messages = [{"role": "system", "content": self._build_system_prompt(context, user_message)}]
         messages.extend(conv_store.get_history(self.conversation))
         return messages
 
-    def _build_system_prompt(self, context):
-        """Dynamic system prompt that adapts to ANY Frappe site. Zero hardcoded DocTypes."""
-        try:
-            user_doc = frappe.get_doc("User", self.user)
-            full_name = user_doc.full_name or self.user
-            roles = [r.role for r in user_doc.roles if r.role != "All"][:10]
-        except Exception:
-            full_name = self.user
-            roles = []
+    def _build_system_prompt(self, context, user_message=None):
+        """Dynamic system prompt that adapts to ANY Frappe site. Zero hardcoded DocTypes.
 
+        Uses multi-layer context from bench introspection:
+        1. Business domain context (from Redis cache)
+        2. User context (roles, company, defaults)
+        3. Viewport context (current route, schema, form data)
+        4. Knowledge context (RAG results for the query)
+        5. Tool guidance (enabled tools with hints)
+        """
         site = frappe.local.site
-        apps = frappe.get_installed_apps()
-        company = frappe.defaults.get_user_default("Company") or ""
 
         # Agent's custom system prompt (strip HTML from rich-text editor)
         custom_prompt = ""
@@ -287,18 +285,39 @@ class OwlEngine:
             raw = self._agent_doc.system_prompt
             if "<div" in raw or "<p>" in raw:
                 from frappe.utils import strip_html
-
                 raw = strip_html(raw)
             custom_prompt = f"\n{raw}"
 
-        # Viewport context (route, schema, form data)
+        # Layer 1: Business domain context (cached, ~0ms)
+        domain_ctx = context.get_domain_context() if context else ""
+
+        # Layer 2: User context
+        user_ctx = context.get_user_context() if context else ""
+
+        # Layer 3: Viewport context (route, schema, form data)
         viewport = context.get_full_context_string() if context else ""
 
-        # Tool usage guidance
+        # Layer 4: Knowledge context (RAG search)
+        knowledge_ctx = ""
+        if user_message and context:
+            knowledge_ctx = context.get_knowledge_context(user_message)
+
+        # Layer 5: Tool usage guidance
         tool_guidance = self._build_tool_guidance()
 
-        return f"""You are OwlAI, a Frappe ERP assistant. Site: {site}. User: {full_name}. Company: {company}.
-You MUST call tools to answer questions. Do NOT describe tool usage in text — actually invoke them.{tool_guidance}{viewport}"""
+        # Token budget: keep total under ~1500 tokens
+        # domain=200, user=100, viewport=500, knowledge=300, tools=200
+        if len(domain_ctx) > 800:
+            domain_ctx = domain_ctx[:800]
+        if len(viewport) > 2000:
+            viewport = viewport[:2000]
+        if len(knowledge_ctx) > 1200:
+            knowledge_ctx = knowledge_ctx[:1200]
+
+        return f"""You are OwlAI, an intelligent Frappe ERP assistant for site: {site}.
+You MUST call tools to answer questions. Do NOT describe tool usage in text — actually invoke them.
+When asked to count, use list tool with limit_page_length=0. For navigation, use navigate tool.{custom_prompt}{domain_ctx}{user_ctx}{tool_guidance}
+{viewport}{knowledge_ctx}"""
 
     def _build_tool_guidance(self):
         """Generate concise tool guidance from the agent's enabled tools only."""
@@ -338,7 +357,8 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
         """Select the most relevant tools for the user's message.
 
         Local models (7B) can only reliably handle 3-4 tools at once.
-        This selects the best subset based on keyword matching.
+        Uses: 1) DocType detection from bench introspection, 2) intent keywords,
+        3) dynamic tool matching for detected DocTypes.
         """
         all_schemas = self._get_tool_schemas()
         if len(all_schemas) <= self.MAX_TOOLS_PER_REQUEST:
@@ -346,7 +366,33 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
 
         msg = user_message.lower()
 
-        # Intent → tool mapping (ordered by priority)
+        # --- Phase 1: Detect DocTypes in the message ---
+        detected_doctypes = []
+        try:
+            from tb_owlai_core.intelligence.bench_introspector import detect_doctypes_in_text
+            detected_doctypes = detect_doctypes_in_text(user_message)
+        except Exception:
+            pass
+
+        # --- Phase 2: Check for dynamic tools matching detected DocTypes ---
+        dynamic_schemas = []
+        if detected_doctypes:
+            try:
+                from tb_owlai_core.intelligence.tool_factory import get_relevant_dynamic_tools
+                dynamic_tools = get_relevant_dynamic_tools(user_message, max_tools=2)
+                for dt in dynamic_tools:
+                    dynamic_schemas.append({
+                        "type": "function",
+                        "function": {
+                            "name": dt["name"],
+                            "description": dt["description"],
+                            "parameters": dt["inputSchema"],
+                        }
+                    })
+            except Exception:
+                pass
+
+        # --- Phase 3: Intent-based scoring for static tools ---
         intent_tools = {
             "navigate": ["navigate"],
             "go to": ["navigate"],
@@ -371,7 +417,6 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
             "fields": ["get_doctype_info"],
         }
 
-        # Score each tool based on keyword matches
         scores = {}
         for keyword, tool_names in intent_tools.items():
             if keyword in msg:
@@ -382,13 +427,16 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
         scores.setdefault("navigate", 1)
         scores.setdefault("list_documents", 1)
 
-        # Sort by score, pick top N
+        # Sort by score, pick top N (minus slots used by dynamic tools)
+        static_slots = self.MAX_TOOLS_PER_REQUEST - len(dynamic_schemas)
         ranked = sorted(scores.keys(), key=lambda n: scores[n], reverse=True)
-        selected_names = set(ranked[: self.MAX_TOOLS_PER_REQUEST])
+        selected_names = set(ranked[:max(static_slots, 2)])
 
         selected = [s for s in all_schemas if s["function"]["name"] in selected_names]
-        # If selection somehow empty, return first N
-        return selected or all_schemas[: self.MAX_TOOLS_PER_REQUEST]
+
+        # Combine: dynamic tools first (more specific), then static fallbacks
+        combined = dynamic_schemas + selected
+        return combined[:self.MAX_TOOLS_PER_REQUEST] or all_schemas[:self.MAX_TOOLS_PER_REQUEST]
 
     def _get_tool_schemas(self):
         """Convert plugin BaseTool instances to OpenAI function-calling schemas."""
@@ -476,13 +524,21 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
         return schema
 
     def _execute_tool(self, name, arguments):
-        """Execute a named tool. Returns (result_json_string, action_dict_or_none)."""
-        try:
-            tool = self.plugin_manager.get_tool(name)
-            if not tool:
-                return json.dumps({"error": f"Tool '{name}' not found"}), None
+        """Execute a named tool. Returns (result_json_string, action_dict_or_none).
 
-            result = tool._safe_execute(arguments)
+        Checks static plugin tools first, then falls back to dynamic tools
+        generated by the tool factory.
+        """
+        try:
+            # 1. Try static plugin tools first
+            tool = self.plugin_manager.get_tool(name)
+            if tool:
+                result = tool._safe_execute(arguments)
+            else:
+                # 2. Try dynamic tools from tool factory
+                result = self._execute_dynamic_tool(name, arguments)
+                if result is None:
+                    return json.dumps({"error": f"Tool '{name}' not found"}), None
 
             # Detect navigation/action in result
             action = None
@@ -500,6 +556,17 @@ You MUST call tools to answer questions. Do NOT describe tool usage in text — 
         except Exception as e:
             frappe.log_error(f"Tool execution error ({name}): {e}")
             return json.dumps({"error": str(e)}), None
+
+    def _execute_dynamic_tool(self, name, arguments):
+        """Execute a dynamically generated tool by name. Returns result dict or None."""
+        try:
+            from tb_owlai_core.intelligence.tool_factory import generate_dynamic_tools, execute_dynamic_tool
+            dynamic_tools = generate_dynamic_tools()
+            if name in dynamic_tools:
+                return execute_dynamic_tool(dynamic_tools[name], arguments)
+        except Exception as e:
+            logger.error(f"Dynamic tool execution error ({name}): {e}")
+        return None
 
     def _drain_side_channel_actions(self):
         """Collect and clear actions queued by tools via frappe.local.owlai_actions."""

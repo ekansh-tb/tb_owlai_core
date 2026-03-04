@@ -1,0 +1,83 @@
+{
+    "actions": [],
+    "autoname": "hash",
+    "creation": "2024-01-01 00:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "chunk_id",
+        "knowledge_base",
+        "chunk_index",
+        "doc_name",
+        "content",
+        "embedding",
+        "meta_data"
+    ],
+    "fields": [
+        {
+            "fieldname": "chunk_id",
+            "fieldtype": "Data",
+            "label": "Chunk ID",
+            "reqd": 1,
+            "unique": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "knowledge_base",
+            "fieldtype": "Link",
+            "label": "Knowledge Base",
+            "options": "OwlAI Knowledge Base",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "chunk_index",
+            "fieldtype": "Int",
+            "label": "Chunk Index",
+            "default": "0"
+        },
+        {
+            "fieldname": "doc_name",
+            "fieldtype": "Data",
+            "label": "Source Document",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "content",
+            "fieldtype": "Long Text",
+            "label": "Content"
+        },
+        {
+            "fieldname": "embedding",
+            "fieldtype": "JSON",
+            "label": "Embedding Vector",
+            "hidden": 1
+        },
+        {
+            "fieldname": "meta_data",
+            "fieldtype": "JSON",
+            "label": "Metadata",
+            "hidden": 1
+        }
+    ],
+    "index_web_pages_for_search": 0,
+    "links": [],
+    "modified": "2024-01-01 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OwlAI Core",
+    "name": "OwlAI Vector Chunk",
+    "naming_rule": "Random",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "read": 1,
+            "role": "System Manager",
+            "write": 1
+        }
+    ],
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 0
+}

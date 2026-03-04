@@ -71,7 +71,7 @@ class OwlEngine:
 
         # Build LLM inputs
         messages = self._build_messages(message, context)
-        tools = self._get_tool_schemas()
+        tools = self._select_tools(message)
         actions = []
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -151,20 +151,27 @@ class OwlEngine:
 
         # Build LLM inputs
         messages = self._build_messages(message, context)
-        tools = self._get_tool_schemas()
+        tools = self._select_tools(message)
         actions = []
         full_response = ""
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         # Yield SSE start event
-        yield f"event: start\ndata: {json.dumps({'conversation_id': self.conversation.name})}\n\n"
+        model_name = getattr(self.client, 'model', 'unknown')
+        yield f"event: start\ndata: {json.dumps({'conversation_id': self.conversation.name, 'model': model_name})}\n\n"
 
         try:
             for _round in range(self.max_tool_rounds + 1):
                 content_buffer = ""
                 tool_calls = []
 
-                for chunk in self.client.chat_stream(messages, tools=tools):
+                try:
+                    stream_iter = self.client.chat_stream(messages, tools=tools)
+                except Exception as init_err:
+                    yield f"data: {json.dumps({'token': f'[Stream init error: {init_err}]'})}\n\n"
+                    break
+
+                for chunk in stream_iter:
                     # Stream text tokens to the client
                     if chunk.get("content"):
                         content_buffer += chunk["content"]
@@ -198,7 +205,7 @@ class OwlEngine:
                         )
                         if action:
                             actions.append(action)
-                            yield f"data: {json.dumps({'action_data': [{'name': action.get('action', 'navigate'), 'parameters': action}]})}\n\n"
+                            yield f"data: {json.dumps({'action_data': [{'name': action.get('action', 'navigate'), 'parameters': action}]}, default=str)}\n\n"
                         messages.append(
                             self.client.format_tool_result_message(
                                 tc["id"], result_str
@@ -219,7 +226,7 @@ class OwlEngine:
             # Drain side-channel actions
             for action in self._drain_side_channel_actions():
                 actions.append(action)
-                yield f"data: {json.dumps({'action_data': [{'name': action.get('action', 'navigate'), 'parameters': action}]})}\n\n"
+                yield f"data: {json.dumps({'action_data': [{'name': action.get('action', 'navigate'), 'parameters': action}]}, default=str)}\n\n"
 
         except Exception as e:
             error_msg = f"\n\n**Error:** {str(e)}"
@@ -250,10 +257,14 @@ class OwlEngine:
     # ------------------------------------------------------------------
 
     def _build_messages(self, user_message, context):
-        """Assemble the full message list for the LLM."""
+        """Assemble the full message list for the LLM.
+
+        Note: The current user message is already saved to the conversation
+        before this method is called, so get_history() already includes it.
+        We do NOT append it again to avoid duplication.
+        """
         messages = [{"role": "system", "content": self._build_system_prompt(context)}]
         messages.extend(conv_store.get_history(self.conversation))
-        messages.append({"role": "user", "content": user_message})
         return messages
 
     def _build_system_prompt(self, context):
@@ -286,60 +297,98 @@ class OwlEngine:
         # Tool usage guidance
         tool_guidance = self._build_tool_guidance()
 
-        return f"""You are OwlAI, the intelligent assistant for this Frappe system.
-
-Site: {site}
-Apps: {', '.join(apps)}
-User: {full_name} ({self.user})
-Roles: {', '.join(roles)}
-Company: {company}
-
-RULES:
-1. ALWAYS use tools for data queries. Never guess or fabricate data.
-2. When you create or find records, provide clickable links: [View {{name}}](/app/{{slug}}/{{name}})
-   - slug = DocType name lowercased with hyphens: 'Sales Order' -> 'sales-order'
-   - name must match the tool output EXACTLY (case-sensitive)
-3. Respect permissions. If a tool returns a permission error, explain it to the user.
-4. Use get_doctype_info BEFORE creating documents if you are unsure of mandatory fields.
-5. If the user says 'this document', 'submit it', or 'the order', use the viewport context below.
-6. For navigation ('show me', 'open', 'go to'), ALWAYS use the navigate tool.
-7. For counting ('how many'), use list_documents with limit_page_length=0.
-8. Act immediately when intent is clear. Do not ask for confirmation on simple queries.
-
-{tool_guidance}
-{viewport}{custom_prompt}"""
+        return f"""You are OwlAI, a Frappe ERP assistant. Site: {site}. User: {full_name}. Company: {company}.
+You MUST call tools to answer questions. Do NOT describe tool usage in text — actually invoke them.{tool_guidance}{viewport}"""
 
     def _build_tool_guidance(self):
-        """Generate dynamic tool usage examples from registered tools."""
-        tools = self.plugin_manager.tools
-        lines = ["TOOL USAGE GUIDE:"]
+        """Generate concise tool guidance from the agent's enabled tools only."""
+        # Only list tools that are actually enabled for this agent
+        enabled_tools = self._get_enabled_tool_names()
+        if not enabled_tools:
+            return ""
 
-        tool_examples = {
-            "list_documents": (
-                'List or count records of any DocType.\n'
-                '  To count: {"doctype": "Employee", "limit_page_length": 0}\n'
-                '  To list:  {"doctype": "Sales Order", "filters": {"status": "Draft"}, "limit_page_length": 10}'
-            ),
-            "navigate": (
-                'Navigate user to a DocType list or form view.\n'
-                '  To list view: {"doctype": "Employee"}\n'
-                '  To form view: {"doctype": "Employee", "docname": "HR-EMP-00001"}'
-            ),
-            "get_document": 'Fetch a single document by name. {"doctype": "Employee", "name": "HR-EMP-00001"}',
-            "create_document": 'Create a new document. Use get_doctype_info first to check mandatory fields.',
-            "search_documents": 'Full-text search across DocTypes. {"query": "John", "doctype": "Employee"}',
-            "get_doctype_info": 'Get field schema and metadata for a DocType. {"doctype": "Sales Order"}',
-            "update_document": 'Update fields on an existing document.',
-            "delete_document": 'Delete a document by name.',
+        hints = {
+            "list_documents": "List or count records. Use limit_page_length=0 for counts.",
+            "navigate": "Open a DocType list or form view.",
+            "get_document": "Fetch a single document by name.",
+            "create_document": "Create a new document. Check get_doctype_info first.",
+            "search_documents": "Full-text search across DocTypes.",
+            "get_doctype_info": "Get field schema for a DocType.",
+            "update_document": "Update fields on an existing document.",
+            "delete_document": "Delete a document by name.",
         }
 
-        for tool_name, tool_instance in tools.items():
-            if tool_name in tool_examples:
-                lines.append(f"- {tool_name}: {tool_examples[tool_name]}")
-            else:
-                lines.append(f"- {tool_name}: {tool_instance.description}")
+        lines = ["\nAvailable tools:"]
+        for name in enabled_tools:
+            hint = hints.get(name, "")
+            lines.append(f"- {name}: {hint}" if hint else f"- {name}")
 
         return "\n".join(lines)
+
+    def _get_enabled_tool_names(self):
+        """Return list of tool names enabled for this agent."""
+        if self._agent_doc and self._agent_doc.tools:
+            return [t.tool for t in self._agent_doc.tools if t.enabled]
+        return list(self.plugin_manager.tools.keys())
+
+    # Max tools to send per request — local 7B models degrade above 3-4 tools
+    MAX_TOOLS_PER_REQUEST = 4
+
+    def _select_tools(self, user_message):
+        """Select the most relevant tools for the user's message.
+
+        Local models (7B) can only reliably handle 3-4 tools at once.
+        This selects the best subset based on keyword matching.
+        """
+        all_schemas = self._get_tool_schemas()
+        if len(all_schemas) <= self.MAX_TOOLS_PER_REQUEST:
+            return all_schemas
+
+        msg = user_message.lower()
+
+        # Intent → tool mapping (ordered by priority)
+        intent_tools = {
+            "navigate": ["navigate"],
+            "go to": ["navigate"],
+            "open": ["navigate", "get_document"],
+            "show me": ["navigate", "list_documents"],
+            "how many": ["list_documents"],
+            "count": ["list_documents"],
+            "list": ["list_documents"],
+            "find": ["search_documents", "list_documents"],
+            "search": ["search_documents"],
+            "create": ["create_document", "get_doctype_info"],
+            "add": ["create_document", "get_doctype_info"],
+            "new": ["create_document", "get_doctype_info"],
+            "update": ["update_document"],
+            "change": ["update_document"],
+            "edit": ["update_document"],
+            "delete": ["delete_document"],
+            "remove": ["delete_document"],
+            "what is": ["get_document", "get_doctype_info"],
+            "get": ["get_document"],
+            "schema": ["get_doctype_info"],
+            "fields": ["get_doctype_info"],
+        }
+
+        # Score each tool based on keyword matches
+        scores = {}
+        for keyword, tool_names in intent_tools.items():
+            if keyword in msg:
+                for i, name in enumerate(tool_names):
+                    scores[name] = scores.get(name, 0) + (10 - i)
+
+        # Always include navigate and list_documents as fallbacks
+        scores.setdefault("navigate", 1)
+        scores.setdefault("list_documents", 1)
+
+        # Sort by score, pick top N
+        ranked = sorted(scores.keys(), key=lambda n: scores[n], reverse=True)
+        selected_names = set(ranked[: self.MAX_TOOLS_PER_REQUEST])
+
+        selected = [s for s in all_schemas if s["function"]["name"] in selected_names]
+        # If selection somehow empty, return first N
+        return selected or all_schemas[: self.MAX_TOOLS_PER_REQUEST]
 
     def _get_tool_schemas(self):
         """Convert plugin BaseTool instances to OpenAI function-calling schemas."""
@@ -368,16 +417,34 @@ RULES:
             else:
                 schema = {"type": "object", "properties": {}}
 
+            # Use compact descriptions for local models
+            desc = self._compact_description(tool_instance.name, tool_instance.description)
             tools.append({
                 "type": "function",
                 "function": {
                     "name": tool_instance.name,
-                    "description": tool_instance.description or f"Execute {tool_instance.name}",
+                    "description": desc,
                     "parameters": schema,
                 },
             })
 
         return tools
+
+    @staticmethod
+    def _compact_description(name, description):
+        """Return a short tool description for local models."""
+        compact = {
+            "navigate": "Navigate to a page.",
+            "list_documents": "List or count documents.",
+            "get_document": "Get a document by name.",
+            "create_document": "Create a new document.",
+            "update_document": "Update a document.",
+            "delete_document": "Delete a document.",
+            "search_documents": "Search for documents.",
+            "get_doctype_info": "Get DocType field schema.",
+            "frappe_utils": "Run a utility function.",
+        }
+        return compact.get(name, (description or "")[:80])
 
     @staticmethod
     def _simplify_tool_schema(schema):

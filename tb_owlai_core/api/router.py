@@ -126,6 +126,11 @@ def handle_stream_input(route=None, text=None, conversation_id=None, context=Non
             engine.conversation.save(ignore_permissions=True)
 
         def generate():
+            # Clear any queued server messages (e.g. from get_password warnings)
+            # that would cause Frappe to abort the streaming response
+            if hasattr(frappe.local, "message_log"):
+                frappe.local.message_log = []
+
             full_response_text = ""
             start_time = time.time()
             status = "Success"

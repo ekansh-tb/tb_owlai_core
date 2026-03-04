@@ -49,19 +49,12 @@ class NavigateTool(BaseTool):
         elif frappe.db.exists("Page", target):
             view = "Page"
         
-        # Return Action for Client
-        result = {
+        # Return action for frontend — detected by engine via result["action"]
+        return {
             "action": "navigate",
-            "message": f"Navigation action dispatched to frontend for '{target}'. The user has been redirected. STOP generating text.",
+            "message": f"Navigated to {target}.",
             "doctype": target,
             "docname": docname,
             "view": view,
-            "filters": filters
+            "filters": filters,
         }
-        
-        # Side-channel to router.py
-        if not hasattr(frappe.local, 'owlai_actions'):
-            frappe.local.owlai_actions = []
-        frappe.local.owlai_actions.append(result)
-        
-        return result

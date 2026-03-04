@@ -75,7 +75,12 @@ class OllamaClient:
         return LLMResponse(content=content, tool_calls=tool_calls, usage=usage)
 
     def chat_stream(self, messages, tools=None):
-        """Streaming chat. Yields dicts with content/tool_calls/done/usage."""
+        """Streaming chat. Yields dicts with content/tool_calls/done/usage.
+
+        Note: Ollama sends tool_calls in a done=false chunk, then a separate
+        done=true chunk with usage stats. We accumulate tool_calls across chunks
+        and emit them with the final done=true chunk.
+        """
         payload = {
             "model": self.model,
             "messages": self._clean_messages(messages),
@@ -94,6 +99,8 @@ class OllamaClient:
                 f"Cannot connect to Ollama at {self.host}. Is it running?"
             )
 
+        accumulated_tool_calls = []
+
         for line in resp.iter_lines():
             if not line:
                 continue
@@ -106,18 +113,19 @@ class OllamaClient:
             content = msg.get("content", "")
             done = data.get("done", False)
 
+            # Ollama sends tool_calls in non-done chunks — accumulate them
+            for tc in msg.get("tool_calls", []):
+                func = tc.get("function", {})
+                accumulated_tool_calls.append({
+                    "id": tc.get("id", f"call_{len(accumulated_tool_calls)}"),
+                    "name": func.get("name", ""),
+                    "arguments": func.get("arguments", {}),
+                })
+
             chunk = {"content": content, "done": done}
 
             if done:
-                tool_calls = []
-                for tc in msg.get("tool_calls", []):
-                    func = tc.get("function", {})
-                    tool_calls.append({
-                        "id": tc.get("id", f"call_{len(tool_calls)}"),
-                        "name": func.get("name", ""),
-                        "arguments": func.get("arguments", {}),
-                    })
-                chunk["tool_calls"] = tool_calls
+                chunk["tool_calls"] = accumulated_tool_calls
                 chunk["usage"] = {
                     "prompt_tokens": data.get("prompt_eval_count", 0),
                     "completion_tokens": data.get("eval_count", 0),
@@ -364,6 +372,15 @@ ENV_KEY_MAP = [
 ]
 
 
+def _param_size_gb(model_info):
+    """Extract parameter size in billions from Ollama model info."""
+    try:
+        size_str = model_info.get("details", {}).get("parameter_size", "0B")
+        return float(size_str.replace("B", "").replace("M", "e-3").replace("K", "e-6"))
+    except (ValueError, TypeError):
+        return 0
+
+
 def get_client(model_doc_name=None):
     """Create the right LLM client. Auto-detects best available provider.
 
@@ -374,21 +391,50 @@ def get_client(model_doc_name=None):
     4. Ollama on localhost (zero-config)
     5. Environment variable API keys
     """
-    # 1. Explicit model
+    # 1. Explicit model — but prefer FC-capable if this one can't do tool calls
     if model_doc_name and frappe.db.exists("OwlAI Model", model_doc_name):
         model_doc = frappe.get_doc("OwlAI Model", model_doc_name)
-        provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
-        return _client_from_provider(provider_doc, model_doc.model_name)
+        if model_doc.supports_function_calling:
+            provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
+            return _client_from_provider(provider_doc, model_doc.model_name)
+        else:
+            # Explicit model can't do FC — try to find one that can
+            logger.warning(
+                f"Model '{model_doc_name}' does not support function calling, searching for alternative"
+            )
+            fc_model = frappe.db.get_value(
+                "OwlAI Model",
+                {"supports_function_calling": 1},
+                ["name", "model_name", "provider"],
+                as_dict=True,
+            )
+            if fc_model:
+                provider_doc = frappe.get_doc("OwlAI Provider", fc_model.provider)
+                return _client_from_provider(provider_doc, fc_model.model_name)
+            # No FC model in DB — fall through to auto-detect
 
-    # 2. Settings default model
+    # 2. Settings default model (prefer function-calling capable)
     try:
         settings = frappe.get_single("OwlAI Settings")
         if settings.default_model and frappe.db.exists(
             "OwlAI Model", settings.default_model
         ):
             model_doc = frappe.get_doc("OwlAI Model", settings.default_model)
-            provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
-            return _client_from_provider(provider_doc, model_doc.model_name)
+            if model_doc.supports_function_calling:
+                provider_doc = frappe.get_doc("OwlAI Provider", model_doc.provider)
+                return _client_from_provider(provider_doc, model_doc.model_name)
+            else:
+                # Default model doesn't support FC — try to find one that does
+                fc_model = frappe.db.get_value(
+                    "OwlAI Model",
+                    {"supports_function_calling": 1},
+                    ["name", "model_name", "provider"],
+                    as_dict=True,
+                )
+                if fc_model:
+                    provider_doc = frappe.get_doc("OwlAI Provider", fc_model.provider)
+                    return _client_from_provider(provider_doc, fc_model.model_name)
+                # No FC model configured — fall through to auto-detect
     except Exception:
         pass
 
@@ -399,19 +445,37 @@ def get_client(model_doc_name=None):
     if default_provider:
         provider_doc = frappe.get_doc("OwlAI Provider", default_provider)
         model_name = frappe.db.get_value(
-            "OwlAI Model", {"provider": default_provider}, "model_name"
+            "OwlAI Model",
+            {"provider": default_provider, "supports_function_calling": 1},
+            "model_name",
         )
+        if not model_name:
+            model_name = frappe.db.get_value(
+                "OwlAI Model", {"provider": default_provider}, "model_name"
+            )
         if model_name:
             return _client_from_provider(provider_doc, model_name)
 
-    # 4. Try Ollama at localhost (zero-config)
+    # 4. Try Ollama at localhost (zero-config, prefer FC-capable models)
     ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     try:
         resp = requests.get(f"{ollama_host}/api/tags", timeout=2)
         if resp.ok:
             models = resp.json().get("models", [])
-            model = models[0]["name"] if models else "llama3.2"
-            return OllamaClient(host=ollama_host, model=model)
+            if not models:
+                return OllamaClient(host=ollama_host, model="llama3.2")
+
+            # Prefer models known to support function calling (7B+)
+            fc_families = {"llama", "qwen2", "mistral", "gemma2", "command-r"}
+            fc_candidates = [
+                m for m in models
+                if m.get("details", {}).get("family") in fc_families
+                and _param_size_gb(m) >= 7
+            ]
+            if fc_candidates:
+                return OllamaClient(host=ollama_host, model=fc_candidates[0]["name"])
+            # Fallback to first available
+            return OllamaClient(host=ollama_host, model=models[0]["name"])
     except Exception:
         pass
 
@@ -432,15 +496,18 @@ def _client_from_provider(provider_doc, model_name):
     name = provider_doc.provider_name
     api_base = provider_doc.api_base
 
-    try:
-        api_key = provider_doc.get_password("api_key")
-    except Exception:
-        api_key = None
-
     if name == "Ollama":
+        # Ollama doesn't need an API key — skip get_password to avoid
+        # frappe.throw("Password not found") which kills streaming responses
         host = api_base or os.getenv("OLLAMA_HOST", "http://localhost:11434")
         return OllamaClient(host=host, model=model_name)
 
-    # OpenAI-compatible providers
+    # OpenAI-compatible providers need an API key
+    api_key = None
+    try:
+        api_key = provider_doc.get_password("api_key")
+    except Exception:
+        pass
+
     base = api_base or DEFAULT_API_BASES.get(name, "https://api.openai.com/v1")
     return OpenAIClient(api_base=base, api_key=api_key, model=model_name)

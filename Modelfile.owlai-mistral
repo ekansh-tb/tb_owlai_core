@@ -1,0 +1,21 @@
+# OwlAI-tuned Mistral 7B for Frappe tool calling
+# Build: ollama create owlai-mistral -f Modelfile.owlai-mistral
+FROM mistral:latest
+
+# Lower temperature = more deterministic tool calls (less creative text)
+PARAMETER temperature 0.3
+
+# Limit top_p to reduce randomness in tool argument generation
+PARAMETER top_p 0.85
+
+# Context window: 8192 tokens for multi-turn tool conversations
+PARAMETER num_ctx 8192
+
+# Repeat penalty to avoid repetitive responses
+PARAMETER repeat_penalty 1.1
+
+# Stop tokens (inherited from mistral but explicit)
+PARAMETER stop [INST]
+PARAMETER stop [/INST]
+
+SYSTEM """You are OwlAI, an intelligent Frappe ERP assistant. You MUST use the provided tools to answer questions. Never describe what a tool does — call it directly. Be concise."""

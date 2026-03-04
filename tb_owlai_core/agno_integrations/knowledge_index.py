@@ -4,14 +4,17 @@ import os
 import shutil
 from typing import List, Dict, Any
 
+HAS_AGNO = False
 try:
     from agno.vectordb.lancedb import LanceDb
     from agno.knowledge.embedder.ollama import OllamaEmbedder
-    # from agno.document import Document as AgnoDocument # Old path
     from agno.knowledge.document.base import Document as AgnoDocument
-    # from agno.utils.text import clean_text # Not found easily, we will inline or skip
-except ImportError as e:
-    frappe.log_error(f"Agno or LanceDB not installed. RAG features will be disabled. Error: {e}")
+    HAS_AGNO = True
+except ImportError:
+    # Agno/LanceDB not installed — RAG features disabled. Logged once at module load.
+    LanceDb = None
+    OllamaEmbedder = None
+    AgnoDocument = None
 
 def clean_text(text):
     """Simple text cleaner if agno utils is missing"""
@@ -25,6 +28,9 @@ def get_vector_db():
     Returns the configured LanceDB instance.
     Uses 'nomic-embed-text' by default, customizable via settings.
     """
+    if not HAS_AGNO:
+        raise ImportError("RAG features require agno and lancedb. Install with: pip install agno lancedb")
+
     settings = frappe.get_single("OwlAI Settings")
     model_name = getattr(settings, "embedding_model", "nomic-embed-text")
     
@@ -107,6 +113,8 @@ def index_document(doc):
             raise Exception("No content extracted to index.")
 
         # 2. Create Agno Documents (Chunks)
+        if not HAS_AGNO:
+            raise ImportError("RAG features require agno and lancedb.")
         from agno.knowledge.chunking.recursive import RecursiveChunking
         
         settings = frappe.get_single("OwlAI Settings")

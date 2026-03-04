@@ -3,7 +3,12 @@
 
 import frappe
 from frappe.model.document import Document
-from tb_owlai_core.agno_integrations.knowledge_index import index_document, delete_from_index
+
+
+def _get_indexer():
+    """Lazy-load the knowledge indexer. Returns (index_document, delete_from_index) or raises ImportError."""
+    from tb_owlai_core.agno_integrations.knowledge_index import index_document, delete_from_index
+    return index_document, delete_from_index
 
 class OwlAIKnowledgeBase(Document):
     def validate(self):
@@ -66,7 +71,8 @@ def add_to_index(doc_name):
     try:
         doc.db_set("status", "Indexing")
         
-        # Call the Agno/RAG logic
+        # Call the RAG indexer
+        index_document, _ = _get_indexer()
         result = index_document(doc)
         
         doc.db_set("status", "Indexed")
@@ -85,6 +91,7 @@ def remove_from_index(doc_name):
     Background Task to remove the document from the index.
     """
     try:
+        _, delete_from_index = _get_indexer()
         delete_from_index(doc_name)
     except Exception as e:
         frappe.log_error(f"Knowledge Base Deletion Error: {e}")

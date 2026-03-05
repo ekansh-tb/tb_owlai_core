@@ -1,12 +1,23 @@
 """
 Native LLM client for Ollama and OpenAI-compatible APIs.
 Zero framework dependencies — uses only `requests` (bundled with Frappe).
+Optional: llama-cpp-python for direct GGUF inference without Ollama.
 """
 
 import json
 import os
 import requests
 import frappe
+
+# Optional llama-cpp-python — only used if installed
+try:
+    from llama_cpp import Llama  # noqa: F401
+    HAS_LLAMA_CPP = True
+except ImportError:
+    HAS_LLAMA_CPP = False
+
+# Module-level singleton cache: model_path -> Llama instance
+_LLAMA_CPP_INSTANCES: dict = {}
 
 logger = frappe.logger("owlai.llm")
 
@@ -354,6 +365,229 @@ class OpenAIClient:
         }
 
 
+class LlamaCppClient:
+    """Direct GGUF inference via llama-cpp-python (no Ollama required).
+
+    Models are loaded once and cached as module-level singletons because
+    loading a GGUF file is expensive (several seconds + significant RAM).
+
+    Install the optional dependency with:
+        pip install llama-cpp-python
+    """
+
+    # Default directories to search for .gguf files
+    _DEFAULT_SEARCH_DIRS = [
+        # Frappe site private storage
+        None,  # filled in dynamically from frappe.get_site_path()
+        os.path.expanduser("~/.cache/owlai/models"),
+    ]
+
+    def __init__(self, model_path: str):
+        if not HAS_LLAMA_CPP:
+            raise ImportError(
+                "llama-cpp-python is not installed. "
+                "Run: pip install llama-cpp-python"
+            )
+        self.model_path = model_path
+        self.model = os.path.basename(model_path)
+        self._llm = self._load(model_path)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load(model_path: str):
+        """Return a cached Llama instance, loading it on first access."""
+        if model_path not in _LLAMA_CPP_INSTANCES:
+            from llama_cpp import Llama
+            logger.info(f"Loading GGUF model from {model_path}")
+            _LLAMA_CPP_INSTANCES[model_path] = Llama(
+                model_path=model_path,
+                n_ctx=8192,
+                n_gpu_layers=-1,  # auto-detect GPU layers
+                verbose=False,
+            )
+        return _LLAMA_CPP_INSTANCES[model_path]
+
+    @staticmethod
+    def find_gguf_files() -> list:
+        """Return a list of .gguf file paths found in the default search dirs."""
+        search_dirs = []
+        try:
+            site_models = os.path.join(frappe.get_site_path("private"), "models")
+            search_dirs.append(site_models)
+        except Exception:
+            pass
+        search_dirs.append(os.path.expanduser("~/.cache/owlai/models"))
+
+        found = []
+        for d in search_dirs:
+            if not d or not os.path.isdir(d):
+                continue
+            for fname in os.listdir(d):
+                if fname.lower().endswith(".gguf"):
+                    found.append(os.path.join(d, fname))
+        return found
+
+    def _messages_to_llama(self, messages):
+        """Pass messages through as-is (llama-cpp-python accepts the same format)."""
+        cleaned = []
+        for m in messages:
+            entry = {"role": m["role"], "content": m.get("content", "") or ""}
+            cleaned.append(entry)
+        return cleaned
+
+    def _llama_tools_to_schema(self, tools):
+        """Convert our tool list to llama-cpp-python's tools format."""
+        if not tools:
+            return None
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.get("name", t.get("function", {}).get("name", "")),
+                    "description": t.get("description", t.get("function", {}).get("description", "")),
+                    "parameters": t.get("parameters", t.get("function", {}).get("parameters", {})),
+                },
+            }
+            for t in tools
+        ]
+
+    def _parse_tool_calls(self, raw_tool_calls):
+        """Normalise llama-cpp tool_calls into our standard format."""
+        result = []
+        for i, tc in enumerate(raw_tool_calls or []):
+            func = tc.get("function", {})
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (json.JSONDecodeError, ValueError):
+                    args = {}
+            result.append({
+                "id": tc.get("id", f"call_{i}"),
+                "name": func.get("name", ""),
+                "arguments": args,
+            })
+        return result
+
+    # ------------------------------------------------------------------
+    # Public interface (mirrors OllamaClient / OpenAIClient)
+    # ------------------------------------------------------------------
+
+    def chat(self, messages, tools=None, stream=False):
+        """Non-streaming chat completion. Returns LLMResponse."""
+        kwargs = {
+            "messages": self._messages_to_llama(messages),
+            "stream": False,
+        }
+        llama_tools = self._llama_tools_to_schema(tools)
+        if llama_tools:
+            kwargs["tools"] = llama_tools
+
+        response = self._llm.create_chat_completion(**kwargs)
+        choice = response.get("choices", [{}])[0]
+        msg = choice.get("message", {})
+        content = msg.get("content", "") or ""
+        tool_calls = self._parse_tool_calls(msg.get("tool_calls"))
+
+        usage_data = response.get("usage", {})
+        usage = {
+            "prompt_tokens": usage_data.get("prompt_tokens", 0),
+            "completion_tokens": usage_data.get("completion_tokens", 0),
+            "total_tokens": usage_data.get("total_tokens", 0),
+        }
+        return LLMResponse(content=content, tool_calls=tool_calls, usage=usage)
+
+    def chat_stream(self, messages, tools=None):
+        """Streaming chat. Yields dicts with content/tool_calls/done/usage."""
+        kwargs = {
+            "messages": self._messages_to_llama(messages),
+            "stream": True,
+        }
+        llama_tools = self._llama_tools_to_schema(tools)
+        if llama_tools:
+            kwargs["tools"] = llama_tools
+
+        accumulated_tool_calls = []
+
+        for chunk in self._llm.create_chat_completion(**kwargs):
+            choice = chunk.get("choices", [{}])[0]
+            delta = choice.get("delta", {})
+            content = delta.get("content", "") or ""
+            finish_reason = choice.get("finish_reason")
+
+            for tc in delta.get("tool_calls", []):
+                func = tc.get("function", {})
+                args = func.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except (json.JSONDecodeError, ValueError):
+                        args = {}
+                accumulated_tool_calls.append({
+                    "id": tc.get("id", f"call_{len(accumulated_tool_calls)}"),
+                    "name": func.get("name", ""),
+                    "arguments": args,
+                })
+
+            done = finish_reason is not None
+            out = {"content": content, "done": done}
+            if done:
+                out["tool_calls"] = accumulated_tool_calls
+                out["usage"] = chunk.get("usage", {})
+            yield out
+
+    def embed(self, text: str) -> list:
+        """Return an embedding vector for text (requires embedding-capable model)."""
+        result = self._llm.create_embedding(text)
+        data = result.get("data", [{}])
+        return data[0].get("embedding", []) if data else []
+
+    def format_tool_result_message(self, tool_call_id, content):
+        return {"role": "tool", "content": str(content), "tool_call_id": tool_call_id}
+
+    def format_assistant_tool_call_message(self, content, tool_calls):
+        formatted = []
+        for tc in tool_calls:
+            args = tc["arguments"]
+            if isinstance(args, dict):
+                args = json.dumps(args)
+            formatted.append({
+                "id": tc["id"],
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": args},
+            })
+        return {"role": "assistant", "content": content or "", "tool_calls": formatted}
+
+
+class NoOpClient:
+    """Fallback client when no LLM provider is configured.
+
+    Returns a helpful setup message instead of raising an error, so the
+    chat UI degrades gracefully rather than showing a 500 error.
+    """
+
+    model = "none"
+    _MSG = (
+        "No LLM provider configured. "
+        "Install Ollama (https://ollama.com) or configure a provider in OwlAI Settings."
+    )
+
+    def chat(self, messages, tools=None, stream=False):
+        return LLMResponse(content=self._MSG)
+
+    def chat_stream(self, messages, tools=None):
+        yield {"content": self._MSG, "done": True, "tool_calls": [], "usage": {}}
+
+    def format_tool_result_message(self, tool_call_id, content):
+        return {"role": "tool", "content": str(content), "tool_call_id": tool_call_id}
+
+    def format_assistant_tool_call_message(self, content, tool_calls):
+        return {"role": "assistant", "content": content or "", "tool_calls": []}
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -479,16 +713,22 @@ def get_client(model_doc_name=None):
     except Exception:
         pass
 
-    # 5. Environment variable fallback
+    # 5. llama-cpp-python direct GGUF inference (no Ollama required)
+    if HAS_LLAMA_CPP:
+        gguf_files = LlamaCppClient.find_gguf_files()
+        if gguf_files:
+            try:
+                return LlamaCppClient(model_path=gguf_files[0])
+            except Exception as e:
+                logger.warning(f"LlamaCppClient init failed: {e}")
+
+    # 6. Environment variable fallback
     for env_key, _name, api_base in ENV_KEY_MAP:
         api_key = os.getenv(env_key)
         if api_key:
             return OpenAIClient(api_base=api_base, api_key=api_key, model="auto")
 
-    raise ConnectionError(
-        "No LLM provider available. "
-        "Install Ollama (https://ollama.com) or configure a provider in OwlAI Settings."
-    )
+    return NoOpClient()
 
 
 def _client_from_provider(provider_doc, model_name):

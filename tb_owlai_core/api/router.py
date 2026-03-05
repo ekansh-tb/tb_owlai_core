@@ -13,8 +13,8 @@ from tb_owlai_core.utils.context import OwlContext
 from tb_owlai_core.engine.core import OwlEngine
 from tb_owlai_core.engine import conversation as conv_store
 
-# SSE stream timeout (seconds) — prevents hung connections
-SSE_STREAM_TIMEOUT = 120
+# SSE stream timeout (seconds) — worst case: 5 tool rounds × 30s each = 150s
+SSE_STREAM_TIMEOUT = 180
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +404,86 @@ def clear_owlai_cache():
 
     OwlCache.clear()
     return {"status": "success", "message": "Cache cleared."}
+
+
+# ---------------------------------------------------------------------------
+# Suggestion Chips
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def get_suggestion_chips(doctype=None):
+    """Return context-aware suggestion chips for the given DocType."""
+    # Hardcoded chips for common DocTypes (mirrors owl_mount.js fallback)
+    HARDCODED_CHIPS = {
+        "Employee": [
+            {"label": "Leave balance", "query": "What is my leave balance?"},
+            {"label": "Expense claims", "query": "Show pending expense claims"},
+            {"label": "Attendance", "query": "Show attendance this month"},
+        ],
+        "Customer": [
+            {"label": "Outstanding", "query": "What is the outstanding balance for this customer?"},
+            {"label": "Recent invoices", "query": "Show recent sales invoices for this customer"},
+            {"label": "Sales summary", "query": "Sales summary for this customer"},
+        ],
+        "Sales Order": [
+            {"label": "Today's orders", "query": "How many sales orders today?"},
+            {"label": "Pending delivery", "query": "Show sales orders pending delivery"},
+            {"label": "Sales summary", "query": "Show sales summary for this month"},
+        ],
+        "Sales Invoice": [
+            {"label": "Today's sales", "query": "Show today sales summary"},
+            {"label": "Outstanding", "query": "Show total outstanding invoices"},
+            {"label": "Top items", "query": "What are top selling items this month?"},
+        ],
+        "Item": [
+            {"label": "Stock balance", "query": "What is the stock balance for this item?"},
+            {"label": "Sales history", "query": "Show sales history for this item"},
+        ],
+        "Supplier": [
+            {"label": "Outstanding", "query": "What is outstanding for this supplier?"},
+            {"label": "Recent bills", "query": "Show recent purchase invoices from this supplier"},
+        ],
+    }
+
+    if not doctype:
+        return []
+
+    if doctype in HARDCODED_CHIPS:
+        return HARDCODED_CHIPS[doctype]
+
+    # Dynamic chips from bench_introspector categories
+    try:
+        from tb_owlai_core.intelligence.bench_introspector import get_bench_map
+        bench_map = get_bench_map()
+        categories = bench_map.get("domain_categories", {})
+
+        chips = []
+
+        if doctype in categories.get("transactions", []):
+            chips.append({"label": f"Today's {doctype}", "query": f"Today's {doctype}"})
+            chips.append({"label": f"Pending {doctype}", "query": f"Pending {doctype}"})
+        elif doctype in categories.get("people", []):
+            chips.append({"label": "Leave balance", "query": "Leave balance"})
+            chips.append({"label": "Outstanding balance", "query": "Outstanding balance"})
+
+        try:
+            meta = frappe.get_meta(doctype)
+            if meta.is_submittable:
+                chips.append({"label": "Pending approval", "query": f"Show {doctype} pending approval"})
+        except Exception:
+            pass
+
+        chips.append({"label": f"Show all {doctype}", "query": f"Show all {doctype}"})
+        chips.append({"label": f"Create new {doctype}", "query": f"Create new {doctype}"})
+
+        return chips
+
+    except Exception as e:
+        frappe.logger("owlai").warning(f"get_suggestion_chips error: {e}")
+        return [
+            {"label": f"Show all {doctype}", "query": f"Show all {doctype}"},
+            {"label": f"Create new {doctype}", "query": f"Create new {doctype}"},
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -213,6 +213,11 @@ class OwlEngine:
         model_name = getattr(self.client, 'model', 'unknown')
         yield f"event: start\ndata: {json.dumps({'conversation_id': self.conversation.name, 'model': model_name})}\n\n"
 
+        # Disambiguation: run entity resolver and surface matches before LLM
+        disambig_payload = _build_disambiguation_payload(message)
+        if disambig_payload:
+            yield f"data: {json.dumps({'disambiguation': disambig_payload})}\n\n"
+
         force_text_next = False  # After text interception or error, force text mode
         shown_working = False    # Only show "Working on it..." once
 
@@ -553,6 +558,7 @@ RULES:
             "get_sales_summary": "Get sales revenue summary by period, customer, or item.",
             "get_stock_balance": "Get current stock/inventory levels for an item or warehouse.",
             "ensure_exists": "Find a record or create it if missing (get-or-create).",
+            "ui_actuator": "Execute a sequence of visible UI actions: navigate, fill fields, save. Use for visual automation.",
         }
 
         lines = ["\nAvailable tools:"]
@@ -647,6 +653,11 @@ RULES:
             "stock": ["get_stock_balance"],
             "inventory": ["get_stock_balance"],
             "payment": ["get_party_outstanding"],
+            # UI Automation
+            "fill": ["ui_actuator"],
+            "automate": ["ui_actuator"],
+            "open and fill": ["ui_actuator"],
+            "set value": ["ui_actuator"],
         }
 
         scores = {}
@@ -729,6 +740,7 @@ RULES:
             "get_sales_summary": "Get sales revenue summary.",
             "get_stock_balance": "Get stock/inventory levels.",
             "ensure_exists": "Find or create a record.",
+            "ui_actuator": "UI automation sequence.",
         }
         return compact.get(name, (description or "")[:80])
 
@@ -841,6 +853,58 @@ RULES:
 # ------------------------------------------------------------------
 
 
+def _build_disambiguation_payload(message):
+    """Run entity resolver on the message and build a disambiguation payload.
+
+    Returns a dict with 'entities', 'suggested_actions', and 'message' keys
+    when multiple entities are found, or None if no disambiguation is needed.
+    """
+    try:
+        from tb_owlai_core.intelligence.entity_resolver import resolve_entities
+    except ImportError:
+        return None
+
+    try:
+        matches = resolve_entities(message)
+    except Exception:
+        return None
+
+    if not matches:
+        return None
+
+    # Only surface disambiguation when there are 2+ distinct entities or
+    # the top match is ambiguous (confidence < 1.0 and multiple results).
+    top_confidence = matches[0]["confidence"] if matches else 0
+    if len(matches) == 1 and top_confidence >= 1.0:
+        return None  # Exact single match — no disambiguation needed
+
+    # Cap at 5 entities to keep the UI clean
+    entities = []
+    for m in matches[:5]:
+        entities.append({
+            "doctype": m["doctype"],
+            "name": m["name"],
+            "display_name": m.get("display") or m["name"],
+            "confidence": round(m["confidence"], 2),
+        })
+
+    # Build intent-level suggested actions for vague queries (no strong match)
+    suggested_actions = []
+    if top_confidence < 0.7 and entities:
+        doctype = entities[0]["doctype"]
+        suggested_actions = [
+            {"label": f"View {doctype} List", "action": "navigate_list", "doctype": doctype},
+            {"label": f"Create New {doctype}", "action": "navigate_new", "doctype": doctype},
+            {"label": f"Search {doctype}s", "action": "search", "query": f"search {doctype.lower()} "},
+        ]
+
+    return {
+        "message": "Multiple matches found — which did you mean?",
+        "entities": entities,
+        "suggested_actions": suggested_actions,
+    }
+
+
 def _accumulate_usage(total, new):
     """Sum token usage dicts."""
     if not new:
@@ -885,7 +949,8 @@ def _extract_text_tool_calls(text, enabled_tools=None):
                   "update_document", "delete_document", "search_documents",
                   "navigate", "get_doctype_info", "frappe_utils",
                   "get_account_balance", "get_party_outstanding", "get_general_ledger",
-                  "get_sales_summary", "get_stock_balance", "ensure_exists"}
+                  "get_sales_summary", "get_stock_balance", "ensure_exists",
+                  "ui_actuator"}
 
     # Intersect with enabled tools if provided — security gate
     allowed = known_tools & enabled_tools if enabled_tools else known_tools
@@ -912,6 +977,10 @@ def _extract_text_tool_calls(text, enabled_tools=None):
 
     # Pattern 2: Function-call syntax
     # Matches: tool_name(arg1="val1", arg2=val2)
+    EXPLANATORY_PHRASES = [
+        "you can use", "try calling", "for example", "e.g.", "such as",
+        "like ", "by using", "by calling",
+    ]
     func_pattern = r'(\w+)\(([^)]+)\)'
     for match in re.finditer(func_pattern, text):
         func_name = match.group(1)
@@ -919,6 +988,22 @@ def _extract_text_tool_calls(text, enabled_tools=None):
 
         if func_name not in allowed:
             continue
+
+        # Skip false positives: explanatory context before the match
+        start = match.start()
+        context_before = text[max(0, start - 50):start].lower()
+        if any(phrase in context_before for phrase in EXPLANATORY_PHRASES):
+            continue
+
+        # Skip if match is inside inline backticks (e.g. `navigate(...)`)
+        # but NOT code fence blocks (```...```) — LLMs often put tool calls in code blocks
+        prefix = text[:start]
+        if start > 0 and prefix.rstrip().endswith('`'):
+            # Check: is this a single inline backtick or a code fence?
+            stripped = prefix.rstrip()
+            if not stripped.endswith('```'):
+                # Single inline backtick — likely explanatory, skip
+                continue
 
         # Parse keyword arguments
         args = {}

@@ -27,6 +27,20 @@ def after_install():
     except Exception as e:
         frappe.log_error(f"OwlAI RAG cache warm error: {e}", title="OwlAI Setup")
 
+    # Ensure an inference model is available (download GGUF in background if needed)
+    try:
+        frappe.publish_realtime(
+            "owlai_setup_progress",
+            {"step": "Checking model availability..."},
+        )
+        frappe.enqueue(
+            "tb_owlai_core.intelligence.model_manager.ensure_model_available",
+            queue="long",
+            timeout=1800,  # 30 min — large GGUF downloads can be slow
+        )
+    except Exception as e:
+        frappe.log_error(f"OwlAI model availability check failed: {e}", title="OwlAI Setup")
+
 
 def after_migrate():
     """Called on every bench migrate. Must be fast (<2s). Syncs tools + quick bench sync."""

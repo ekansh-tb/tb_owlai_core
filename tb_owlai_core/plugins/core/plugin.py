@@ -61,6 +61,9 @@ class CorePlugin(BasePlugin):
 
             # Get-or-Create
             "ensure_exists",
+
+            # UI Automation
+            "ui_actuator",
         ]
 
     def validate_environment(self):

@@ -15,6 +15,24 @@ dependencies = [
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
+[project.optional-dependencies]
+# Direct GGUF inference without Ollama. Install with:
+#   pip install llama-cpp-python
+# For GPU acceleration see: https://github.com/abetlen/llama-cpp-python#installation-with-specific-hardware-acceleration
+llama = ["llama-cpp-python>=0.2.0"]
+
+# Fast KNN vector search via sqlite-vec. Install with:
+#   pip install sqlite-vec
+vec = ["sqlite-vec>=0.1.0"]
+
+# ONNX embedding fallback when Ollama is unavailable. Install with:
+#   pip install fastembed
+# Downloads BAAI/bge-small-en-v1.5 (~130MB) on first use (CPU-only).
+onnx = ["fastembed>=0.2.0"]
+
+# All optional inference/vector backends
+all-inference = ["llama-cpp-python>=0.2.0", "sqlite-vec>=0.1.0", "fastembed>=0.2.0"]
+
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"

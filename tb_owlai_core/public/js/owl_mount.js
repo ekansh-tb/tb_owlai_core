@@ -60,6 +60,82 @@ class OwlMount {
         this.inject_styles();
         this.bind_shortcuts();
         this.mount_navbar_trigger();
+        this._bind_realtime_listeners();
+    }
+
+    _bind_realtime_listeners() {
+        // Listen for setup/initialization progress from backend
+        frappe.realtime.on('owlai_setup_progress', (data) => {
+            const step = data.step || 'Initializing OwlAI...';
+            this._show_setup_banner(step);
+        });
+
+        // Listen for model download progress bar
+        frappe.realtime.on('progress', (data) => {
+            if (data.title === 'OwlAI Model Download') {
+                this._show_download_progress(data.percent || 0, data.description || '');
+            }
+        });
+    }
+
+    _show_setup_banner(message) {
+        let banner = document.getElementById('owl-setup-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'owl-setup-banner';
+            banner.className = 'owl-setup-banner';
+            document.body.appendChild(banner);
+        }
+        banner.innerHTML = `
+            <div class="owl-setup-icon">&#x1F989;</div>
+            <div class="owl-setup-text">
+                <span class="owl-setup-label">OwlAI</span>
+                <span class="owl-setup-msg">${message}</span>
+            </div>
+            <div class="owl-setup-spinner"></div>
+        `;
+        banner.style.display = 'flex';
+
+        // Auto-hide after 30s if no new updates
+        clearTimeout(this._setupBannerTimeout);
+        this._setupBannerTimeout = setTimeout(() => {
+            if (banner) banner.style.display = 'none';
+        }, 30000);
+    }
+
+    _show_download_progress(percent, description) {
+        let banner = document.getElementById('owl-setup-banner');
+        if (!banner) {
+            this._show_setup_banner(description || 'Downloading model...');
+            banner = document.getElementById('owl-setup-banner');
+        }
+
+        // Update or create progress bar
+        let bar = banner.querySelector('.owl-setup-progress');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'owl-setup-progress';
+            bar.innerHTML = '<div class="owl-setup-progress-fill"></div>';
+            banner.appendChild(bar);
+        }
+        bar.querySelector('.owl-setup-progress-fill').style.width = percent + '%';
+
+        // Update message
+        const msgEl = banner.querySelector('.owl-setup-msg');
+        if (msgEl) msgEl.textContent = description || `Downloading model... ${percent}%`;
+
+        // Hide when complete
+        if (percent >= 100) {
+            setTimeout(() => {
+                if (banner) banner.style.display = 'none';
+            }, 2000);
+        }
+
+        // Extend auto-hide timeout during active download
+        clearTimeout(this._setupBannerTimeout);
+        this._setupBannerTimeout = setTimeout(() => {
+            if (banner) banner.style.display = 'none';
+        }, 60000);
     }
 
     inject_styles() {
@@ -379,6 +455,64 @@ class OwlMount {
             }
             .owl-disambiguation-name {
                 font-weight: 500;
+            }
+            /* Entity action buttons */
+            .owl-entity-group {
+                margin-bottom: 10px;
+            }
+            .owl-entity-header {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--text-color);
+                margin-bottom: 4px;
+            }
+            .owl-entity-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .owl-entity-action-btn {
+                padding: 4px 10px;
+                border-radius: 6px;
+                border: 1px solid var(--border-color);
+                background: var(--card-bg, #fff);
+                cursor: pointer;
+                font-size: 12px;
+                color: var(--text-color);
+                transition: border-color 0.15s, background 0.15s;
+            }
+            .owl-entity-action-btn:hover {
+                border-color: var(--primary-color);
+                background: var(--bg-light-gray);
+            }
+            .owl-entity-action-btn.primary {
+                background: var(--primary-color);
+                color: #fff;
+                border-color: var(--primary-color);
+            }
+            .owl-entity-action-btn.primary:hover {
+                opacity: 0.9;
+            }
+            /* Intent action buttons */
+            .owl-intent-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 4px;
+            }
+            .owl-intent-btn {
+                padding: 5px 12px;
+                border-radius: 6px;
+                border: 1px solid var(--border-color);
+                background: var(--card-bg, #fff);
+                cursor: pointer;
+                font-size: 12px;
+                color: var(--text-color);
+                transition: border-color 0.15s, background 0.15s;
+            }
+            .owl-intent-btn:hover {
+                border-color: var(--primary-color);
+                background: var(--bg-light-gray);
             }
 
             /* Suggestion Chips */
@@ -718,10 +852,18 @@ class OwlMount {
                                     const params = action.parameters || {};
                                     const actionLabel = action.name.charAt(0).toUpperCase() + action.name.slice(1);
                                     let detail = '';
-                                    if (action.name === 'navigate' && params.doctype) {
+                                    if (action.name === 'ui_sequence') {
+                                        detail = params.message || `Executing ${(params.steps || []).length} action(s)...`;
+                                    } else if (action.name === 'navigate' && params.doctype) {
                                         detail = params.docname
                                             ? `Opening ${params.doctype}: ${params.docname}`
                                             : `Opening ${params.doctype} ${params.view || 'List'}`;
+                                    } else if (action.name === 'new_doc' && params.doctype) {
+                                        detail = `Creating new ${params.doctype}`;
+                                    } else if (action.name === 'set_value') {
+                                        detail = `Setting ${params.fieldname || 'field'}`;
+                                    } else if (action.name === 'save') {
+                                        detail = 'Saving document';
                                     } else if (params.message) {
                                         detail = params.message;
                                     }
@@ -783,46 +925,103 @@ class OwlMount {
         const div = document.createElement('div');
         div.className = 'owl-disambiguation-container';
 
-        let html = `<div class="owl-disambiguation-label">${disambiguation.message || 'Multiple matches found:'}</div><div class="owl-disambiguation-cards">`;
+        const options = disambiguation.options || [];
+        const suggestedActions = disambiguation.suggested_actions || [];
+        const message = disambiguation.message || 'Multiple matches found:';
 
-        for (const option of (disambiguation.options || [])) {
-            html += `<button class="owl-disambiguation-card" data-value="${option.name}" data-doctype="${option.doctype}">
-                <span class="owl-disambiguation-type">${option.doctype}</span>
-                <span class="owl-disambiguation-name">${option.display_name || option.name}</span>
-            </button>`;
+        let html = `<div class="owl-disambiguation-label">${message}</div>`;
+
+        // Render entity options with action buttons
+        if (options.length) {
+            html += '<div class="owl-disambiguation-cards">';
+            for (const option of options) {
+                const displayName = option.display_name || option.name;
+                html += `<div class="owl-disambiguation-card">
+                    <div class="owl-disambig-info">
+                        <span class="owl-disambiguation-type">${option.doctype}</span>
+                        <span class="owl-disambiguation-name">${displayName}</span>
+                    </div>
+                    <div class="owl-disambig-actions">
+                        <button class="owl-disambig-btn owl-disambig-open" data-doctype="${option.doctype}" data-name="${option.name}" title="Open record">Open</button>
+                        <button class="owl-disambig-btn owl-disambig-use" data-doctype="${option.doctype}" data-name="${option.name}" data-display="${displayName}" title="Use in current query">Use</button>
+                    </div>
+                </div>`;
+            }
+            html += '</div>';
         }
-        html += '</div>';
+
+        // Render suggested actions (for vague queries like just "Employee")
+        if (suggestedActions.length) {
+            html += '<div class="owl-disambig-suggestions">';
+            for (const sa of suggestedActions) {
+                html += `<button class="owl-disambig-suggestion" data-action="${sa.action || 'query'}" data-query="${sa.query || ''}" data-doctype="${sa.doctype || ''}">
+                    ${sa.label}
+                </button>`;
+            }
+            html += '</div>';
+        }
+
+        // "Create new" option if no exact match
+        if (options.length === 0 && disambiguation.doctype) {
+            html += `<div class="owl-disambig-suggestions">
+                <button class="owl-disambig-suggestion" data-action="navigate" data-doctype="${disambiguation.doctype}">View ${disambiguation.doctype} List</button>
+                <button class="owl-disambig-suggestion" data-action="new_doc" data-doctype="${disambiguation.doctype}">Create New ${disambiguation.doctype}</button>
+            </div>`;
+        }
+
         div.innerHTML = html;
 
-        // Add click handlers
-        div.querySelectorAll('.owl-disambiguation-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const value = card.dataset.value;
-                const doctype = card.dataset.doctype;
+        // Click handlers — Open button
+        div.querySelectorAll('.owl-disambig-open').forEach(btn => {
+            btn.addEventListener('click', () => {
+                frappe.set_route('Form', btn.dataset.doctype, btn.dataset.name);
+                this.minimize();
+            });
+        });
+
+        // Click handlers — Use button
+        div.querySelectorAll('.owl-disambig-use').forEach(btn => {
+            btn.addEventListener('click', () => {
                 const input = document.getElementById('owl-input');
-                input.value = `Use ${doctype}: ${value}`;
-                input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}));
+                input.value = `Use ${btn.dataset.doctype}: ${btn.dataset.display}`;
+                this.handle_input(new KeyboardEvent('keydown', {key: 'Enter'}));
+            });
+        });
+
+        // Click handlers — Suggestion buttons
+        div.querySelectorAll('.owl-disambig-suggestion').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                if (action === 'navigate') {
+                    frappe.set_route('List', btn.dataset.doctype);
+                    this.minimize();
+                } else if (action === 'new_doc') {
+                    frappe.new_doc(btn.dataset.doctype);
+                    this.minimize();
+                } else if (action === 'search') {
+                    const input = document.getElementById('owl-input');
+                    input.value = btn.dataset.query;
+                    input.focus();
+                } else {
+                    const input = document.getElementById('owl-input');
+                    input.value = btn.dataset.query;
+                    this.handle_input(new KeyboardEvent('keydown', {key: 'Enter'}));
+                }
             });
         });
 
         return div;
     }
 
-    _get_suggestion_chips() {
-        const route = frappe.get_route_str();
-        const parts = (route || '').split('/');
-        const doctype = parts[1];
-
-        if (!doctype) return [];
-
-        const chipMap = {
+    _hardcoded_chips() {
+        return {
             'Employee': [
                 {label: 'Leave balance', query: 'What is my leave balance?'},
                 {label: 'Expense claims', query: 'Show pending expense claims'},
                 {label: 'Attendance', query: 'Show attendance this month'},
             ],
             'Customer': [
-                {label: 'Outstanding', query: `What is the outstanding balance for this customer?`},
+                {label: 'Outstanding', query: 'What is the outstanding balance for this customer?'},
                 {label: 'Recent invoices', query: 'Show recent sales invoices for this customer'},
                 {label: 'Sales summary', query: 'Sales summary for this customer'},
             ],
@@ -845,15 +1044,62 @@ class OwlMount {
                 {label: 'Recent bills', query: 'Show recent purchase invoices from this supplier'},
             ],
         };
-
-        return chipMap[doctype] || [];
     }
 
-    _render_suggestion_chips() {
+    async _get_suggestion_chips() {
+        const route = frappe.get_route_str();
+        const parts = (route || '').split('/');
+        const doctype = parts[1];
+
+        if (!doctype) return [];
+
+        // Check sessionStorage cache first
+        const cacheKey = `owlai_chips_${doctype}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            try {
+                return JSON.parse(cached);
+            } catch (e) { /* ignore parse errors */ }
+        }
+
+        // Try backend API
+        try {
+            const resp = await fetch(
+                `/api/method/tb_owlai_core.api.router.get_suggestion_chips?doctype=${encodeURIComponent(doctype)}`,
+                {
+                    headers: {
+                        'X-Frappe-CSRF-Token': frappe.csrf_token
+                    }
+                }
+            );
+            if (resp.ok) {
+                const data = await resp.json();
+                const chips = data.message || [];
+                if (chips.length) {
+                    sessionStorage.setItem(cacheKey, JSON.stringify(chips));
+                    return chips;
+                }
+            }
+        } catch (e) {
+            console.warn('OwlAI: Could not fetch suggestion chips from API', e);
+        }
+
+        // Fallback 1: hardcoded map
+        const hardcoded = this._hardcoded_chips();
+        if (hardcoded[doctype]) return hardcoded[doctype];
+
+        // Fallback 2: generic chips
+        return [
+            {label: 'Show all records', query: `Show all ${doctype}`},
+            {label: 'Create new', query: `Create new ${doctype}`},
+        ];
+    }
+
+    async _render_suggestion_chips() {
         const existingChips = document.querySelector('.owl-suggestion-chips');
         if (existingChips) existingChips.remove();
 
-        const chips = this._get_suggestion_chips();
+        const chips = await this._get_suggestion_chips();
         if (!chips.length) return;
 
         const container = document.createElement('div');
@@ -879,28 +1125,253 @@ class OwlMount {
     }
 
     handle_action(action) {
-        if (action.name === 'navigate') {
-            const params = action.parameters || {};
-            if (params.doctype) {
-                const docname = params.docname || (params.filters && (params.filters.name || params.filters.id));
-                const view = params.view || 'List';
+        const params = action.parameters || {};
 
-                if (docname && view === 'Form') {
-                    frappe.set_route('Form', params.doctype, docname);
-                } else {
-                    if (params.filters) frappe.route_options = params.filters;
-
-                    if (view === 'Page') frappe.set_route(params.doctype);
-                    else if (view === 'List') frappe.set_route('List', params.doctype);
-                    else if (view === 'Report') frappe.set_route('query-report', params.doctype);
-                    else if (view === 'Dashboard') frappe.set_route('dashboard-view', params.doctype);
-                    else frappe.set_route('List', params.doctype);
-                }
-                // Minimize to show the navigation result while keeping AI available
-                this.minimize();
+        if (action.name === 'ui_sequence') {
+            // Multi-step UI automation sequence
+            const steps = params.steps || [];
+            if (steps.length) {
+                this._execute_action_sequence(steps);
             }
+            return;
+        }
+
+        if (action.name === 'navigate') {
+            this._execute_navigate(params);
+        } else if (action.name === 'new_doc') {
+            this._execute_new_doc(params);
+        } else if (action.name === 'set_value') {
+            this._execute_set_value(params);
+        } else if (action.name === 'save') {
+            this._execute_save(params);
+        } else if (action.name === 'reload') {
+            this._execute_reload(params);
+        } else if (action.name === 'show_alert') {
+            this._execute_show_alert(params);
+        }
+    }
+
+    _execute_navigate(params) {
+        if (!params.doctype) return;
+        const docname = params.docname || (params.filters && (params.filters.name || params.filters.id));
+        const view = params.view || 'List';
+
+        if (docname && view === 'Form') {
+            frappe.set_route('Form', params.doctype, docname);
+        } else {
+            if (params.filters) frappe.route_options = params.filters;
+            if (view === 'Page') frappe.set_route(params.doctype);
+            else if (view === 'List') frappe.set_route('List', params.doctype);
+            else if (view === 'Report') frappe.set_route('query-report', params.doctype);
+            else if (view === 'Dashboard') frappe.set_route('dashboard-view', params.doctype);
+            else frappe.set_route('List', params.doctype);
+        }
+        this.minimize();
+    }
+
+    _execute_new_doc(params) {
+        if (!params.doctype) return;
+        frappe.new_doc(params.doctype, params.initial_values || {});
+        this.minimize();
+    }
+
+    async _execute_set_value(params) {
+        if (!params.fieldname || !window.cur_frm) return;
+        const field = params.fieldname;
+        const value = params.value;
+
+        await cur_frm.set_value(field, value);
+
+        // Visual highlight on the field
+        const fieldEl = cur_frm.fields_dict[field];
+        if (fieldEl && fieldEl.$wrapper) {
+            fieldEl.$wrapper.addClass('owl-field-highlight');
+            setTimeout(() => fieldEl.$wrapper.removeClass('owl-field-highlight'), 1500);
+        }
+    }
+
+    async _execute_save(params) {
+        if (!window.cur_frm) return;
+        await cur_frm.save();
+    }
+
+    async _execute_reload(params) {
+        if (!window.cur_frm) return;
+        await cur_frm.reload_doc();
+    }
+
+    _execute_show_alert(params) {
+        frappe.show_alert({
+            message: params.message || 'Action completed',
+            indicator: params.indicator || 'green',
+        }, 5);
+    }
+
+    async _execute_action_sequence(steps) {
+        const contentDiv = document.querySelector('.owl-content');
+        if (!contentDiv) return;
+
+        // Create progress container in chat
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'owl-action-sequence';
+        contentDiv.appendChild(progressContainer);
+
+        for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'owl-action-step';
+
+            // Render all steps: completed / current / pending
+            progressContainer.innerHTML = '';
+            for (let j = 0; j < steps.length; j++) {
+                const s = steps[j];
+                const sDiv = document.createElement('div');
+                sDiv.className = 'owl-action-step';
+                const desc = s.description || s.type;
+                if (j < i) {
+                    sDiv.innerHTML = '<span class="step-icon step-done">&#10003;</span> ' + desc;
+                } else if (j === i) {
+                    sDiv.innerHTML = '<span class="step-icon step-active">&#9679;</span> ' + desc + '...';
+                } else {
+                    sDiv.innerHTML = '<span class="step-icon step-pending">&#9675;</span> ' + desc;
+                }
+                progressContainer.appendChild(sDiv);
+            }
+            contentDiv.scrollTop = contentDiv.scrollHeight;
+
+            // Execute the step
+            try {
+                await this._execute_single_step(step);
+            } catch (err) {
+                // Mark step as failed
+                const failDiv = progressContainer.children[i];
+                if (failDiv) {
+                    failDiv.innerHTML = '<span class="step-icon step-error">&#10007;</span> ' +
+                        (step.description || step.type) + ' — ' + (err.message || 'Failed');
+                }
+                contentDiv.scrollTop = contentDiv.scrollHeight;
+                return;
+            }
+
+            // Brief pause between steps for visual clarity
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        // Mark all done
+        progressContainer.innerHTML = '';
+        for (const s of steps) {
+            const sDiv = document.createElement('div');
+            sDiv.className = 'owl-action-step';
+            sDiv.innerHTML = '<span class="step-icon step-done">&#10003;</span> ' + (s.description || s.type);
+            progressContainer.appendChild(sDiv);
+        }
+        contentDiv.scrollTop = contentDiv.scrollHeight;
+    }
+
+    async _execute_single_step(step) {
+        const type = step.type;
+        if (type === 'navigate') {
+            this._execute_navigate(step);
+            // Wait for route change
+            await new Promise(r => setTimeout(r, 1000));
+        } else if (type === 'new_doc') {
+            this._execute_new_doc(step);
+            // Wait for form to load
+            await new Promise(resolve => {
+                const check = setInterval(() => {
+                    if (window.cur_frm && cur_frm.doc && cur_frm.doc.__islocal) {
+                        clearInterval(check);
+                        resolve();
+                    }
+                }, 200);
+                setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+            });
+        } else if (type === 'set_value') {
+            await this._execute_set_value(step);
+        } else if (type === 'save') {
+            await this._execute_save(step);
+        } else if (type === 'reload') {
+            await this._execute_reload(step);
+        } else if (type === 'show_alert') {
+            this._execute_show_alert(step);
         }
     }
 }
+
+// CSS for action sequence steps and field highlight
+(function() {
+    const style = document.createElement('style');
+    style.textContent = `
+        .owl-action-sequence {
+            padding: 8px 12px;
+            margin: 8px 0;
+            background: var(--subtle-fg, #f8f9fa);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary, #6366f1);
+        }
+        .owl-action-step {
+            padding: 4px 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .step-icon { margin-right: 6px; }
+        .step-done { color: var(--green-500, #22c55e); }
+        .step-active { color: var(--primary, #6366f1); animation: owl-pulse 1s infinite; }
+        .step-pending { color: var(--text-light, #adb5bd); }
+        .step-error { color: var(--red-500, #ef4444); }
+        @keyframes owl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .owl-field-highlight {
+            animation: owl-highlight 1.5s ease-out;
+        }
+        @keyframes owl-highlight {
+            0% { background-color: rgba(250, 204, 21, 0.4); }
+            100% { background-color: transparent; }
+        }
+        .owl-disambiguation-card {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; margin: 4px 0; border-radius: 6px;
+            background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0);
+        }
+        .owl-disambig-info { display: flex; flex-direction: column; gap: 2px; }
+        .owl-disambig-actions { display: flex; gap: 6px; }
+        .owl-disambig-btn {
+            padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border-color);
+            background: var(--subtle-fg, #f8f9fa); cursor: pointer; font-size: 12px;
+        }
+        .owl-disambig-btn:hover { background: var(--primary, #6366f1); color: #fff; border-color: var(--primary); }
+        .owl-disambig-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .owl-disambig-suggestion {
+            padding: 5px 12px; border-radius: 16px; border: 1px solid var(--border-color);
+            background: var(--subtle-fg, #f8f9fa); cursor: pointer; font-size: 12px;
+        }
+        .owl-disambig-suggestion:hover { background: var(--primary, #6366f1); color: #fff; border-color: var(--primary); }
+        .owl-setup-banner {
+            position: fixed; bottom: 20px; right: 20px; z-index: 9998;
+            display: none; align-items: center; gap: 10px;
+            padding: 10px 16px; border-radius: 10px;
+            background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e2e8f0);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-size: 13px; max-width: 360px;
+        }
+        .owl-setup-icon { font-size: 20px; }
+        .owl-setup-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+        .owl-setup-label { font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--primary, #6366f1); }
+        .owl-setup-msg { color: var(--text-muted); font-size: 12px; }
+        .owl-setup-spinner {
+            width: 16px; height: 16px; border: 2px solid var(--border-color);
+            border-top-color: var(--primary, #6366f1); border-radius: 50%;
+            animation: owl-spin 0.8s linear infinite;
+        }
+        @keyframes owl-spin { to { transform: rotate(360deg); } }
+        .owl-setup-progress {
+            width: 100%; height: 4px; background: var(--border-color, #e2e8f0);
+            border-radius: 2px; margin-top: 6px; overflow: hidden;
+        }
+        .owl-setup-progress-fill {
+            height: 100%; background: var(--primary, #6366f1); border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+    `;
+    document.head.appendChild(style);
+})();
 
 window.owl_mount = new OwlMount();

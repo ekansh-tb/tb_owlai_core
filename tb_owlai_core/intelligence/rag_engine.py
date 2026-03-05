@@ -5,6 +5,7 @@ Uses:
 - Ollama /api/embed for embeddings (already running locally)
 - Redis as hot cache for fast cosine similarity search
 - Frappe DB (OwlAI Vector Chunk) as cold storage / source of truth
+- sqlite-vec (optional) as a fast KNN vector index alongside the above
 
 No agno, no lancedb, no numpy, no langchain.
 """
@@ -18,10 +19,41 @@ import math
 
 logger = frappe.logger("owlai.rag")
 
+# ---------------------------------------------------------------------------
+# Optional sqlite-vec backend
+# ---------------------------------------------------------------------------
+
+try:
+    from tb_owlai_core.intelligence.vector_store_sqlite import (
+        SqliteVecStore,
+        HAS_SQLITE_VEC,
+    )
+except ImportError:
+    HAS_SQLITE_VEC = False
+    SqliteVecStore = None  # type: ignore
+
+_SQLITE_VEC_STORE = None  # module-level singleton
+
+
+def _get_vector_store():
+    """Return the sqlite-vec store singleton, or None if unavailable."""
+    global _SQLITE_VEC_STORE
+    if not HAS_SQLITE_VEC:
+        return None
+    if _SQLITE_VEC_STORE is None:
+        try:
+            _SQLITE_VEC_STORE = SqliteVecStore()
+        except Exception as e:
+            logger.warning(f"sqlite-vec store init failed, falling back to MariaDB+Redis: {e}")
+            return None
+    return _SQLITE_VEC_STORE
+
 # Redis key constants
 CACHE_KEY_VECTORS = "owlai:vectors"
 CACHE_KEY_VECTOR_IDS = "owlai:vector_ids"
 CACHE_TTL = 604800  # 7 days
+
+MAX_VECTORS = 2000
 
 
 # ------------------------------------------------------------------
@@ -74,13 +106,23 @@ def index_document(doc):
         chunk_doc.flags.ignore_permissions = True
         chunk_doc.insert()
 
-        # Cache in Redis
-        _cache_vector(chunk_id, embedding, chunk_text, {
+        chunk_meta = {
             "doc_name": doc.name,
             "title": doc.title,
             "source_type": doc.source_type,
             "chunk_index": i,
-        })
+        }
+
+        # Cache in Redis
+        _cache_vector(chunk_id, embedding, chunk_text, chunk_meta)
+
+        # Dual-write to sqlite-vec (if available)
+        vec_store = _get_vector_store()
+        if vec_store is not None:
+            try:
+                vec_store.store(chunk_id, chunk_text, embedding, chunk_meta)
+            except Exception as e:
+                logger.warning(f"sqlite-vec store write failed for chunk {chunk_id}: {e}")
 
     frappe.db.commit()
 
@@ -102,7 +144,18 @@ def search(query, limit=5):
         if not query_embedding:
             return []
 
-        # Load all vectors from cache (or DB fallback)
+        # Fast path: sqlite-vec KNN search
+        vec_store = _get_vector_store()
+        if vec_store is not None:
+            try:
+                results = vec_store.search(query_embedding, limit=limit)
+                if results:
+                    return results
+                # Empty result from sqlite-vec (no vectors indexed yet) — fall through
+            except Exception as e:
+                logger.warning(f"sqlite-vec search failed, falling back to MariaDB+Redis: {e}")
+
+        # Default path: load all vectors from cache (or DB fallback)
         vectors = _load_all_vectors()
         if not vectors:
             return []
@@ -142,6 +195,14 @@ def delete_from_index(doc_name):
         # Delete from Redis
         for cid in chunk_ids:
             frappe.cache.delete_value(f"{CACHE_KEY_VECTORS}:{cid}")
+
+        # Delete from sqlite-vec (if available)
+        vec_store = _get_vector_store()
+        if vec_store is not None:
+            try:
+                vec_store.delete_by_doc(doc_name)
+            except Exception as e:
+                logger.warning(f"sqlite-vec delete failed for {doc_name}: {e}")
 
         # Update vector IDs set
         _remove_from_id_set(chunk_ids)
@@ -312,7 +373,11 @@ def _get_ollama_config():
 
 
 def _embed_single(text):
-    """Embed a single text string. Returns list of floats."""
+    """Embed a single text string. Returns list of floats.
+
+    Try Ollama first. If unavailable (ConnectionError), fall back to
+    FastEmbed ONNX embeddings (if fastembed is installed).
+    """
     host, model = _get_ollama_config()
     try:
         resp = requests.post(
@@ -325,7 +390,20 @@ def _embed_single(text):
         # Ollama returns {"embeddings": [[...]]}
         embeddings = data.get("embeddings", [])
         if embeddings:
+            logger.debug("OwlAI RAG: using Ollama embeddings")
             return embeddings[0]
+        return []
+    except requests.exceptions.ConnectionError:
+        # Ollama not available — try ONNX fallback
+        logger.warning("OwlAI RAG: Ollama unavailable for embeddings, trying ONNX fallback")
+        try:
+            from tb_owlai_core.intelligence.model_manager import embed_text_onnx
+            result = embed_text_onnx(text)
+            if result:
+                logger.debug("OwlAI RAG: using FastEmbed ONNX embeddings")
+                return result
+        except Exception as fe:
+            logger.error(f"OwlAI RAG: ONNX fallback failed: {fe}")
         return []
     except Exception as e:
         logger.error(f"Embedding error: {e}")
@@ -445,8 +523,15 @@ def _load_all_vectors():
         chunks = frappe.get_all(
             "OwlAI Vector Chunk",
             fields=["chunk_id", "content", "embedding", "doc_name", "meta_data", "chunk_index"],
-            limit_page_length=0
+            limit_page_length=MAX_VECTORS,
+            order_by="creation desc"
         )
+
+        total = frappe.db.count("OwlAI Vector Chunk")
+        if total > MAX_VECTORS:
+            frappe.logger().warning(
+                f"OwlAI: {total} vectors exceed MAX_VECTORS={MAX_VECTORS}, only newest {MAX_VECTORS} loaded"
+            )
 
         ids = []
         for c in chunks:
